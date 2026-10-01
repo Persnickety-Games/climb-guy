@@ -4,8 +4,13 @@ Simple browser games for mobile and desktop. Plain HTML/CSS/JS with no build ste
 
 ## Games
 
-- **Climber** (`climber/`): drag and release to slingshot a hand upward. Grab a ledge near the top of the arc, and the elastic arm flings your body up. Climb faster than the water rises.
-  - The ⚙ button opens live tuning sliders (saved in your browser) for experimenting with the feel.
+- **Climber** (`climber/`, mobile): two thumbs, two hands. The left half of the screen controls the left hand and the right half controls the right.
+  - Drag down and release to throw a free hand.
+  - Tap while the hand is over a ledge to grab it, and keep your thumb down to hold on. Lift it and the hand lets go.
+  - Arms are elastic: let go with the lower hand and the upper arm flings you up. A held hand limits how far the other can reach.
+- **Climber Classic** (`climber-classic/`): the original one-finger version. Drag to slingshot, and the hand auto-grabs near the top of its arc.
+
+Both have a ⚙ button with live tuning sliders, saved in your browser.
 
 ## Run locally
 

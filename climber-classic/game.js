@@ -1,39 +1,33 @@
-// Climber — two thumbs, two hands. Outclimb the rising water.
-//
-// Controls (touch, two thumbs):
-//   Left half of the screen = left hand, right half = right hand.
-//   - Drag down and release to throw a free hand (slingshot).
-//   - Tap while a hand is over a ledge to grab it, and KEEP HOLDING.
-//   - Lift that thumb and the hand lets go.
-// A held arm is elastic: let go with the lower hand and the upper arm flings you up.
+// Climber — slingshot your hands up the screen before the water catches you.
 //
 // World units: the play area is 400 units wide; y points UP (height).
+// The canvas transform maps world -> screen, so all physics uses world units.
 
 (() => {
   'use strict';
 
   // ---------- Tuning (editable live via the ⚙ panel) ----------
   const DEFAULTS = {
-    launchPower: 950,   // hand throw speed at full drag
+    launchPower: 950,   // hand launch speed at full drag
     maxDrag: 150,       // drag distance (world units) for full power
-    handGravity: 1500,  // gravity on a thrown hand
-    armReach: 250,      // max arm length — a held hand limits how far you can go
+    handGravity: 1500,  // gravity on a flying hand
+    grabWindow: 330,    // hand can grab while |vertical speed| < this (i.e. near the apex)
     armStiffness: 38,   // how hard a stretched arm yanks the body
     armDamping: 2.5,    // how quickly the yank settles
     armRest: 34,        // relaxed arm length
     bodyGravity: 1300,  // gravity on the body
-    waterSpeed: 18,     // starting water rise speed
+    waterSpeed: 22,     // starting water rise speed
     waterRamp: 4,       // extra water speed per 1000 units climbed
   };
 
   const FIELDS = [
-    ['launchPower', 'Throw power', 400, 1600, 10],
+    ['launchPower', 'Launch power', 400, 1600, 10],
     ['maxDrag', 'Drag for full power', 60, 300, 5],
     ['handGravity', 'Hand gravity', 500, 3000, 50],
-    ['armReach', 'Arm reach', 120, 400, 5],
+    ['grabWindow', 'Grab window (apex)', 50, 1000, 10],
     ['armStiffness', 'Arm springiness', 5, 120, 1],
     ['armDamping', 'Arm damping', 0, 10, 0.1],
-    ['armRest', 'Arm length (relaxed)', 15, 80, 1],
+    ['armRest', 'Arm length', 15, 80, 1],
     ['bodyGravity', 'Body gravity', 300, 3000, 50],
     ['waterSpeed', 'Water speed', 0, 120, 1],
     ['waterRamp', 'Water speed-up', 0, 30, 0.5],
@@ -44,20 +38,17 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
 
-  const T = Object.assign({}, DEFAULTS, store.get('climber2.tuning', {}));
+  const T = Object.assign({}, DEFAULTS, store.get('climber.tuning', {}));
 
   // ---------- Constants ----------
   const WORLD_W = 400;
   const BODY_R = 16;
-  const HAND_R = 9;
+  const HAND_R = 8;
   const SHOULDER_X = 13;
   const SHOULDER_Y = 5;
   const UNITS_PER_METER = 40;
   const START_Y = 160;
   const DT = 1 / 120;
-  const DRAG_START_PX = 12;  // thumb movement that turns a tap into a throw
-  const LEFT = 0, RIGHT = 1;
-  const SIDE_COLOR = ['#5ec8f2', '#ffd166'];
 
   // ---------- Canvas ----------
   const canvas = document.getElementById('game');
@@ -90,7 +81,6 @@
   }
 
   // ---------- Game state ----------
-  // Hand states: held | idle | flying | returning
   let state;
 
   function newGame() {
@@ -101,21 +91,20 @@
       time: 0,
       body: { x: 190, y: START_Y - T.armRest - 8, vx: 0, vy: 0 },
       hands: [
-        // The left hand starts on the ledge. Until the first throw it holds on
-        // by itself; after that it needs the left thumb down.
-        { state: 'held', autoHeld: true, x: 186, y: START_Y, vx: 0, vy: 0, t: 0, launchY: 0 },
-        { state: 'idle', autoHeld: false, x: 0, y: 0, vx: 0, vy: 0, t: 0, launchY: 0 },
+        { state: 'held', x: 186, y: START_Y, vx: 0, vy: 0 },
+        { state: 'idle', x: 0, y: 0, vx: 0, vy: 0 },
       ],
-      thumbs: [null, null],    // per side: { id, mode: aim|grip|none, sx, sy, cx, cy }
+      grip: 0,                 // index of the gripping hand
       holds: [startHold],
       holdsTop: START_Y,
       water: -120,
       cam: START_Y - 300,
       maxY: START_Y,
-      best: store.get('climber2.best', 0),
+      drag: null,              // { sx, sy, cx, cy } in CSS pixels
+      best: store.get('climber.best', 0),
       newBest: false,
     };
-    placeIdle(RIGHT);
+    placeIdleHand();
     generateHolds();
   }
 
@@ -124,37 +113,16 @@
   }
 
   function shoulder(i) {
-    const side = i === LEFT ? -1 : 1;
+    const side = i === 0 ? -1 : 1;
     return { x: state.body.x + side * SHOULDER_X, y: state.body.y + SHOULDER_Y };
   }
 
-  function placeIdle(i) {
+  function placeIdleHand() {
+    const i = 1 - state.grip;
     const s = shoulder(i);
-    const side = i === LEFT ? -1 : 1;
+    const side = i === 0 ? -1 : 1;
     state.hands[i].x = s.x + side * 8;
     state.hands[i].y = s.y - 14;
-  }
-
-  function startPlaying() {
-    if (state.phase !== 'ready') return;
-    state.phase = 'playing';
-    // From now on a hand only stays on a ledge while its thumb is down.
-    state.hands.forEach((h, i) => {
-      if (!h.autoHeld) return;
-      h.autoHeld = false;
-      if (state.thumbs[i]?.mode !== 'grip') letGo(i);
-    });
-  }
-
-  function letGo(i) {
-    const h = state.hands[i];
-    if (h.state !== 'held') return;
-    h.state = 'returning';
-    h.autoHeld = false;
-  }
-
-  function holdUnder(h) {
-    return state.holds.find(o => circleHitsRect(h.x, h.y, HAND_R, o)) || null;
   }
 
   // ---------- Level generation ----------
@@ -169,43 +137,22 @@
     }
   }
 
-  // Each row keeps at least one ledge within horizontal reach of the row below,
-  // since a held hand limits how far the other can go.
-  const MAX_ROW_SHIFT = 160;
-
   function spawnRow(y, d) {
     const count = Math.random() < lerp(0.55, 0.15, d) ? 2 : 1;
     const slotW = WORLD_W / count;
-    const row = [];
     for (let i = 0; i < count; i++) {
       const tall = Math.random() < 0.15;
       const w = tall ? rand(16, 24) : lerp(140, 45, d) * rand(0.7, 1.3) / (count === 2 ? 1.4 : 1);
       const h = tall ? rand(50, 90) : rand(14, 22);
       const x = rand(slotW * i + w / 2 + 6, slotW * (i + 1) - w / 2 - 6);
-      row.push({
+      state.holds.push({
         x, y: y + rand(-15, 15), w, h,
         color: HOLD_COLORS[(Math.random() * HOLD_COLORS.length) | 0],
       });
     }
-    const prev = state.lastRow || [state.holds[0]];
-    const gap = (a, b) => Math.max(0, Math.abs(a.x - b.x) - (a.w + b.w) / 2);
-    let best = null, bestGap = Infinity, anchor = null;
-    for (const a of row) for (const b of prev) {
-      if (gap(a, b) < bestGap) { bestGap = gap(a, b); best = a; anchor = b; }
-    }
-    if (bestGap > MAX_ROW_SHIFT) {
-      const dir = Math.sign(anchor.x - best.x);
-      best.x += dir * (bestGap - MAX_ROW_SHIFT + rand(0, 40));
-    }
-    state.holds.push(...row);
-    state.lastRow = row;
   }
 
-  // ---------- Input: each half of the screen drives one hand ----------
-  function sideOf(clientX) {
-    return clientX < cssW / 2 ? LEFT : RIGHT;
-  }
-
+  // ---------- Input ----------
   function onDown(e) {
     if (!tunePanel.hidden) return;
     e.preventDefault();
@@ -213,80 +160,36 @@
       if (state.time - state.overAt > 0.6) newGame();
       return;
     }
-    const i = sideOf(e.clientX);
-    if (state.thumbs[i]) return; // that side already has a thumb on it
-    try { canvas.setPointerCapture(e.pointerId); } catch {}
-    const thumb = { id: e.pointerId, mode: 'none', canAim: false, sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY };
-    state.thumbs[i] = thumb;
-
-    const h = state.hands[i];
-    if (h.state === 'held') {
-      // Taking over a hand that's holding on by itself (start of the game).
-      thumb.mode = 'grip';
-      h.autoHeld = false;
-      return;
-    }
-    const atShoulder = h.state === 'idle' || h.state === 'returning';
-    const hold = holdUnder(h);
-    if (hold) {
-      // Tap to grab: only works if the hand is over a ledge right now.
-      grab(i, hold);
-      thumb.mode = 'grip';
-      thumb.canAim = atShoulder; // a hand at the shoulder can still turn this into a throw
-    } else if (atShoulder) {
-      thumb.mode = 'aim';
-    }
-    // Otherwise it's a missed grab: this thumb does nothing until lifted.
+    canvas.setPointerCapture?.(e.pointerId);
+    state.drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY };
   }
 
   function onMove(e) {
-    const i = state.thumbs.findIndex(t => t && t.id === e.pointerId);
-    if (i < 0) return;
+    const d = state.drag;
+    if (!d || d.id !== e.pointerId) return;
     e.preventDefault();
-    const t = state.thumbs[i];
-    t.cx = e.clientX;
-    t.cy = e.clientY;
-    if (t.canAim && Math.hypot(t.cx - t.sx, t.cy - t.sy) > DRAG_START_PX) {
-      // Dragging, not holding: drop the grab and aim a throw instead.
-      t.canAim = false;
-      t.mode = 'aim';
-      state.hands[i].state = 'idle';
-    }
+    d.cx = e.clientX;
+    d.cy = e.clientY;
   }
 
   function onUp(e) {
-    const i = state.thumbs.findIndex(t => t && t.id === e.pointerId);
-    if (i < 0) return;
+    const d = state.drag;
+    if (!d || d.id !== e.pointerId) return;
     e.preventDefault();
-    const t = state.thumbs[i];
-    state.thumbs[i] = null;
-    if (state.phase === 'over') return;
-    if (t.mode === 'grip') {
-      letGo(i);
-    } else if (t.mode === 'aim') {
-      const v = throwVelocity(t);
-      if (v) throwHand(i, v);
-    }
+    state.drag = null;
+    const v = launchVelocity(d);
+    if (v) launch(v);
   }
 
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
-  canvas.addEventListener('pointercancel', onUp);
-  canvas.addEventListener('contextmenu', e => e.preventDefault());
-
-  function grab(i, hold) {
-    const h = state.hands[i];
-    h.state = 'held';
-    h.x = clamp(h.x, hold.x - hold.w / 2, hold.x + hold.w / 2);
-    h.y = clamp(h.y, hold.y - hold.h / 2, hold.y + hold.h / 2);
-    h.vx = h.vy = 0;
-  }
+  canvas.addEventListener('pointercancel', () => { state.drag = null; });
 
   // Slingshot: hand flies opposite to the drag, speed scales with drag length.
-  function throwVelocity(t) {
-    const dx = (t.cx - t.sx) / scale;
-    const dy = (t.cy - t.sy) / scale;     // screen y points down
+  function launchVelocity(d) {
+    const dx = (d.cx - d.sx) / scale;
+    const dy = (d.cy - d.sy) / scale;     // screen y points down
     const len = Math.hypot(dx, dy);
     if (len < 10) return null;
     const power = Math.min(len, T.maxDrag) / T.maxDrag;
@@ -294,55 +197,66 @@
     return { vx: (-dx / len) * speed, vy: (dy / len) * speed };
   }
 
-  function throwHand(i, v) {
-    const h = state.hands[i];
-    if (h.state !== 'idle' && h.state !== 'returning') return;
+  function launch(v) {
+    const i = 1 - state.grip;
+    const hand = state.hands[i];
+    if (hand.state === 'flying') return;
     const s = shoulder(i);
-    Object.assign(h, { state: 'flying', x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y });
-    startPlaying();
+    hand.state = 'flying';
+    hand.x = s.x; hand.y = s.y;
+    hand.vx = v.vx; hand.vy = v.vy;
+    if (state.phase === 'ready') state.phase = 'playing';
   }
 
   // ---------- Simulation ----------
-  // A thrown hand: gravity, walls, and the arm can't stretch past its reach.
-  function advanceHand(h, s, dt) {
+  // Hand flight is shared by the real throw and the aiming preview,
+  // so the target marker always matches where the hand will actually grab.
+  function advanceHand(h, dt) {
     h.vy -= T.handGravity * dt;
     h.x += h.vx * dt;
     h.y += h.vy * dt;
-    h.t += dt;
     if (h.x < HAND_R) { h.x = HAND_R; h.vx = Math.abs(h.vx) * 0.4; }
     if (h.x > WORLD_W - HAND_R) { h.x = WORLD_W - HAND_R; h.vx = -Math.abs(h.vx) * 0.4; }
-    const dx = h.x - s.x, dy = h.y - s.y, dist = Math.hypot(dx, dy);
-    if (dist > T.armReach) {
-      const nx = dx / dist, ny = dy / dist;
-      h.x = s.x + nx * T.armReach;
-      h.y = s.y + ny * T.armReach;
-      const out = h.vx * nx + h.vy * ny;
-      if (out > 0) { h.vx -= out * nx; h.vy -= out * ny; }
-    }
   }
 
-  // The hand is done once it falls back below where it was thrown from.
-  function handFlightOver(h) {
-    return (h.vy < 0 && h.y < h.launchY - 10) || h.t > 2.5;
+  function grabbableHold(h) {
+    if (Math.abs(h.vy) > T.grabWindow) return null;
+    return state.holds.find(o => circleHitsRect(h.x, h.y, HAND_R, o)) || null;
+  }
+
+  // Simulate a throw: returns the arc points and where it ends (grab or miss).
+  function predictThrow(x, y, vx, vy) {
+    const h = { x, y, vx, vy };
+    const points = [];
+    let apex = null;
+    for (let n = 0; n < 600; n++) {
+      advanceHand(h, DT);
+      points.push({ x: h.x, y: h.y, inWindow: Math.abs(h.vy) <= T.grabWindow });
+      if (!apex && h.vy <= 0) apex = { x: h.x, y: h.y };
+      const hold = grabbableHold(h);
+      if (hold) return { points, hit: true, x: h.x, y: h.y };
+      if (h.vy < -T.grabWindow) break;
+    }
+    const end = apex || points[points.length - 1];
+    return { points, hit: false, x: end.x, y: end.y };
   }
 
   function step(dt) {
     const { body, hands } = state;
 
-    // Body: gravity + an elastic pull from every held hand.
+    // Body: gravity + elastic arm to the gripping hand (only pulls when stretched).
+    const g = hands[state.grip];
     let ax = 0, ay = -T.bodyGravity;
-    hands.forEach((h, i) => {
-      if (h.state !== 'held') return;
-      const s = shoulder(i);
-      const dx = h.x - s.x, dy = h.y - s.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist <= T.armRest) return;
+    const dx = g.x - body.x, dy = g.y - (body.y + SHOULDER_Y);
+    const dist = Math.hypot(dx, dy);
+    if (dist > T.armRest) {
       const nx = dx / dist, ny = dy / dist;
+      const stretch = dist - T.armRest;
       const radialV = body.vx * nx + body.vy * ny;
-      const f = T.armStiffness * (dist - T.armRest) - T.armDamping * radialV * 3;
+      const f = T.armStiffness * stretch - T.armDamping * radialV * 3;
       ax += nx * f;
       ay += ny * f;
-    });
+    }
     body.vx += ax * dt;
     body.vy += ay * dt;
     body.vx *= Math.exp(-0.4 * dt); // light air drag
@@ -350,35 +264,42 @@
     body.x += body.vx * dt;
     body.y += body.vy * dt;
 
-    // Arms can't stretch past their reach: a held hand is a hard limit.
-    hands.forEach((h, i) => {
-      if (h.state !== 'held') return;
-      const s = shoulder(i);
-      const dx = s.x - h.x, dy = s.y - h.y, dist = Math.hypot(dx, dy);
-      if (dist <= T.armReach) return;
-      const nx = dx / dist, ny = dy / dist;
-      body.x -= nx * (dist - T.armReach);
-      body.y -= ny * (dist - T.armReach);
-      const out = body.vx * nx + body.vy * ny;
-      if (out > 0) { body.vx -= out * nx; body.vy -= out * ny; }
-    });
-
     if (body.x < BODY_R) { body.x = BODY_R; body.vx = Math.abs(body.vx) * 0.5; }
     if (body.x > WORLD_W - BODY_R) { body.x = WORLD_W - BODY_R; body.vx = -Math.abs(body.vx) * 0.5; }
 
-    // Hands.
-    hands.forEach((h, i) => {
-      const s = shoulder(i);
-      if (h.state === 'flying') {
-        advanceHand(h, s, dt);
-        if (handFlightOver(h)) h.state = 'returning';
-      } else if (h.state === 'returning') {
-        const k = 1 - Math.exp(-22 * dt);
-        h.x += (s.x - h.x) * k;
-        h.y += (s.y - h.y) * k;
-        if (Math.hypot(s.x - h.x, s.y - h.y) < 4) h.state = 'idle';
+    // Free hand.
+    const fi = 1 - state.grip;
+    const f = hands[fi];
+    if (f.state === 'flying') {
+      advanceHand(f, dt);
+      const hold = grabbableHold(f);
+      if (hold) {
+        f.state = 'held';
+        f.x = clamp(f.x, hold.x - hold.w / 2, hold.x + hold.w / 2);
+        f.y = clamp(f.y, hold.y - hold.h / 2, hold.y + hold.h / 2);
+        f.vx = f.vy = 0;
+        hands[state.grip].state = 'returning';
+        state.grip = fi;
+      } else if (f.vy < -T.grabWindow) {
+        f.state = 'returning'; // missed — past the apex window
       }
-      if (h.state === 'idle') placeIdle(i);
+    }
+
+    // Any returning hand snaps back to its shoulder.
+    hands.forEach((h, i) => {
+      if (h.state !== 'returning') return;
+      const s = shoulder(i);
+      const k = 1 - Math.exp(-22 * dt);
+      h.x += (s.x - h.x) * k;
+      h.y += (s.y - h.y) * k;
+      if (Math.hypot(s.x - h.x, s.y - h.y) < 4) h.state = 'idle';
+    });
+    hands.forEach((h, i) => {
+      if (h.state !== 'idle') return;
+      const s = shoulder(i);
+      const side = i === 0 ? -1 : 1;
+      h.x = s.x + side * 8;
+      h.y = s.y - 14;
     });
 
     state.maxY = Math.max(state.maxY, body.y);
@@ -400,11 +321,12 @@
   function gameOver() {
     state.phase = 'over';
     state.overAt = state.time;
+    state.drag = null;
     const m = heightMeters();
     if (m > state.best) {
       state.best = m;
       state.newBest = true;
-      store.set('climber2.best', m);
+      store.set('climber.best', m);
     }
   }
 
@@ -418,6 +340,7 @@
   }
 
   function skyColor(t) {
+    // t: 0 (ground) .. 1 (very high)
     const a = [135, 197, 234], b = [26, 35, 80];
     const c = a.map((v, i) => Math.round(lerp(v, b[i], t)));
     return `rgb(${c[0]},${c[1]},${c[2]})`;
@@ -433,6 +356,7 @@
     ctx.fillStyle = '#0b1d2e';
     ctx.fillRect(0, 0, cssW, cssH);
 
+    // Sky over the play column.
     const t = clamp(state.cam / 12000, 0, 1);
     const grad = ctx.createLinearGradient(0, 0, 0, cssH);
     grad.addColorStop(0, skyColor(clamp(t + 0.08, 0, 1)));
@@ -454,14 +378,9 @@
       ctx.fillText(`${Math.round((y - START_Y) / UNITS_PER_METER)} m`, ox + 6, sy - 4);
     }
 
-    // Faint divider between the two thumb zones.
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-    ctx.setLineDash([4, 8]);
-    ctx.beginPath(); ctx.moveTo(cssW / 2, 0); ctx.lineTo(cssW / 2, cssH); ctx.stroke();
-    ctx.setLineDash([]);
-
     worldTransform();
 
+    // Holds.
     for (const h of state.holds) {
       if (h.y + h.h < state.cam - 50 || h.y - h.h > state.cam + viewH + 50) continue;
       ctx.fillStyle = h.color;
@@ -471,69 +390,108 @@
       ctx.fillRect(h.x - h.w / 2 + 2, h.y + h.h / 2 - 4, h.w - 4, 2);
     }
 
-    drawAimArcs();
+    drawPreview();
     drawClimber();
     drawWater();
 
     screenTransform();
-    drawThumbs();
+    drawDragIndicator();
     drawHud();
   }
 
-  // Faint dotted arc for a hand being aimed (respecting arm reach).
-  function drawAimArcs() {
-    if (state.phase === 'over') return;
-    state.thumbs.forEach((t, i) => {
-      if (!t || t.mode !== 'aim') return;
-      const v = throwVelocity(t);
-      if (!v) return;
-      const s = shoulder(i);
-      const h = { x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y };
-      ctx.fillStyle = SIDE_COLOR[i];
-      ctx.globalAlpha = 0.45;
-      for (let n = 0; n < 300 && !handFlightOver(h); n++) {
-        advanceHand(h, s, DT);
-        if (n % 7) continue;
-        ctx.beginPath(); ctx.arc(h.x, h.y, 2.2, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
+  function drawPreview() {
+    const d = state.drag;
+    if (!d || state.phase === 'over') return;
+    const v = launchVelocity(d);
+    if (!v) return;
+    const s = shoulder(1 - state.grip);
+    const p = predictThrow(s.x, s.y, v.vx, v.vy);
+
+    // Faint arc.
+    p.points.forEach((pt, n) => {
+      if (n % 6) return;
+      ctx.fillStyle = pt.inWindow ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.3)';
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.inWindow ? 2.5 : 2, 0, Math.PI * 2);
+      ctx.fill();
     });
+
+    drawTarget(p.x, p.y, p.hit);
+  }
+
+  // Crosshair: solid green where the hand will grab, dashed red when it will miss.
+  function drawTarget(x, y, hit) {
+    const r = HAND_R + 7;
+    const pulse = hit ? 1 + Math.sin(state.time * 10) * 0.08 : 1;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(pulse, pulse);
+    ctx.strokeStyle = hit ? '#5dff8a' : 'rgba(255, 110, 110, 0.85)';
+    ctx.lineWidth = hit ? 3 : 2;
+    if (!hit) ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      ctx.moveTo(ax * (r - 4), ay * (r - 4));
+      ctx.lineTo(ax * (r + 6), ay * (r + 6));
+    }
+    ctx.stroke();
+    if (hit) {
+      ctx.fillStyle = '#5dff8a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   function drawClimber() {
     const { body, hands } = state;
 
+    // Arms.
     ctx.lineCap = 'round';
     hands.forEach((h, i) => {
       const s = shoulder(i);
       const len = Math.hypot(h.x - s.x, h.y - s.y);
-      ctx.strokeStyle = SIDE_COLOR[i];
+      ctx.strokeStyle = '#f0a65a';
       ctx.lineWidth = clamp(8 - len * 0.02, 2.5, 7);
-      ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(h.x, h.y); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(h.x, h.y);
+      ctx.stroke();
     });
 
+    // Body.
     ctx.fillStyle = '#e8873a';
-    ctx.beginPath(); ctx.arc(body.x, body.y, BODY_R, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.arc(body.x, body.y, BODY_R, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Eyes follow a flying hand, else look up; they go wide when falling.
-    const fly = hands.find(h => h.state === 'flying');
-    const lx = fly ? fly.x - body.x : 0, ly = fly ? fly.y - body.y : 1;
+    // Eyes look toward the gripping hand (or the flying one).
+    const fh = hands[1 - state.grip];
+    const look = fh.state === 'flying' ? fh : hands[state.grip];
+    const lx = look.x - body.x, ly = look.y - body.y;
     const ll = Math.hypot(lx, ly) || 1;
-    const falling = !hands.some(h => h.state === 'held');
     for (const ex of [-6, 6]) {
       ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(body.x + ex, body.y + 4, falling ? 5.5 : 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(body.x + ex, body.y + 4, 4.5, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#1b1b1b';
       ctx.beginPath(); ctx.arc(body.x + ex + (lx / ll) * 2, body.y + 4 + (ly / ll) * 2, 2.2, 0, Math.PI * 2); ctx.fill();
     }
 
-    hands.forEach((h, i) => {
-      ctx.fillStyle = SIDE_COLOR[i];
+    // Hands.
+    hands.forEach((h) => {
+      const grabbable = h.state === 'flying' && Math.abs(h.vy) <= T.grabWindow;
+      ctx.fillStyle = h.state === 'held' ? '#ffd27a' : '#f0a65a';
       ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R, 0, Math.PI * 2); ctx.fill();
-      if (h.state === 'held') {
-        ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      if (grabbable) {
+        ctx.strokeStyle = '#fff';
         ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R + 3, 0, Math.PI * 2); ctx.stroke();
       }
     });
   }
@@ -553,29 +511,18 @@
     ctx.fill();
   }
 
-  // Show where each thumb is and what it's doing.
-  function drawThumbs() {
-    state.thumbs.forEach((t, i) => {
-      if (!t) return;
-      ctx.strokeStyle = SIDE_COLOR[i];
-      ctx.fillStyle = SIDE_COLOR[i];
-      if (t.mode === 'aim') {
-        ctx.globalAlpha = 0.6;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 6]);
-        ctx.beginPath(); ctx.moveTo(t.sx, t.sy); ctx.lineTo(t.cx, t.cy); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.globalAlpha = 0.3;
-        ctx.beginPath(); ctx.arc(t.sx, t.sy, 12, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 0.9;
-        ctx.beginPath(); ctx.arc(t.cx, t.cy, 9, 0, Math.PI * 2); ctx.fill();
-      } else {
-        ctx.globalAlpha = t.mode === 'grip' ? 0.6 : 0.2;
-        ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(t.cx, t.cy, 26, 0, Math.PI * 2); ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-    });
+  function drawDragIndicator() {
+    const d = state.drag;
+    if (!d) return;
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath(); ctx.moveTo(d.sx, d.sy); ctx.lineTo(d.cx, d.cy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.beginPath(); ctx.arc(d.sx, d.sy, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.beginPath(); ctx.arc(d.cx, d.cy, 7, 0, Math.PI * 2); ctx.fill();
   }
 
   function drawHud() {
@@ -590,25 +537,16 @@
 
     ctx.textAlign = 'center';
     const cx = ox + (WORLD_W * scale) / 2;
-    if (state.phase === 'ready') {
-      const by = cssH * 0.74;
-      const holding = state.thumbs[LEFT]?.mode === 'grip';
-      const hints = [
-        holding ? ['Holding ✓', 'keep it down'] : ['HOLD here', 'to keep your grip'],
-        ['DRAG down here', 'to throw · TAP to grab'],
-      ];
-      hints.forEach(([a, b], i) => {
-        const hx = i === LEFT ? cssW * 0.25 : cssW * 0.75;
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        roundRect(hx - cssW * 0.23, by, cssW * 0.46, 64, 12);
-        ctx.fill();
-        ctx.fillStyle = i === LEFT && holding ? '#8dff9e' : SIDE_COLOR[i];
-        ctx.font = 'bold 15px system-ui, sans-serif';
-        ctx.fillText(a, hx, by + 26);
-        ctx.fillStyle = '#fff';
-        ctx.font = '12px system-ui, sans-serif';
-        ctx.fillText(b, hx, by + 46);
-      });
+    if (state.phase === 'ready' && !state.drag) {
+      const by = cssH * 0.14;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      roundRect(cx - 160, by, 320, 76, 12);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 17px system-ui, sans-serif';
+      ctx.fillText('Drag down, then release', cx, by + 30);
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillText('Aim for the green crosshair', cx, by + 54);
     } else if (state.phase === 'over') {
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0, 0, cssW, cssH);
@@ -666,7 +604,7 @@
       input.addEventListener('input', () => {
         T[key] = parseFloat(input.value);
         val.textContent = T[key];
-        store.set('climber2.tuning', T);
+        store.set('climber.tuning', T);
       });
       tuneFields.append(wrap, input);
     }
@@ -675,11 +613,12 @@
   document.getElementById('tune-btn').addEventListener('click', () => {
     buildTuning();
     tunePanel.hidden = !tunePanel.hidden;
+    state.drag = null;
   });
   document.getElementById('tune-close').addEventListener('click', () => { tunePanel.hidden = true; });
   document.getElementById('tune-reset').addEventListener('click', () => {
     Object.assign(T, DEFAULTS);
-    store.set('climber2.tuning', T);
+    store.set('climber.tuning', T);
     buildTuning();
   });
 
