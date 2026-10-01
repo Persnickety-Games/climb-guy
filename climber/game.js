@@ -209,6 +209,38 @@
   }
 
   // ---------- Simulation ----------
+  // Hand flight is shared by the real throw and the aiming preview,
+  // so the target marker always matches where the hand will actually grab.
+  function advanceHand(h, dt) {
+    h.vy -= T.handGravity * dt;
+    h.x += h.vx * dt;
+    h.y += h.vy * dt;
+    if (h.x < HAND_R) { h.x = HAND_R; h.vx = Math.abs(h.vx) * 0.4; }
+    if (h.x > WORLD_W - HAND_R) { h.x = WORLD_W - HAND_R; h.vx = -Math.abs(h.vx) * 0.4; }
+  }
+
+  function grabbableHold(h) {
+    if (Math.abs(h.vy) > T.grabWindow) return null;
+    return state.holds.find(o => circleHitsRect(h.x, h.y, HAND_R, o)) || null;
+  }
+
+  // Simulate a throw: returns the arc points and where it ends (grab or miss).
+  function predictThrow(x, y, vx, vy) {
+    const h = { x, y, vx, vy };
+    const points = [];
+    let apex = null;
+    for (let n = 0; n < 600; n++) {
+      advanceHand(h, DT);
+      points.push({ x: h.x, y: h.y, inWindow: Math.abs(h.vy) <= T.grabWindow });
+      if (!apex && h.vy <= 0) apex = { x: h.x, y: h.y };
+      const hold = grabbableHold(h);
+      if (hold) return { points, hit: true, x: h.x, y: h.y };
+      if (h.vy < -T.grabWindow) break;
+    }
+    const end = apex || points[points.length - 1];
+    return { points, hit: false, x: end.x, y: end.y };
+  }
+
   function step(dt) {
     const { body, hands } = state;
 
@@ -239,22 +271,15 @@
     const fi = 1 - state.grip;
     const f = hands[fi];
     if (f.state === 'flying') {
-      f.vy -= T.handGravity * dt;
-      f.x += f.vx * dt;
-      f.y += f.vy * dt;
-      if (f.x < HAND_R) { f.x = HAND_R; f.vx = Math.abs(f.vx) * 0.4; }
-      if (f.x > WORLD_W - HAND_R) { f.x = WORLD_W - HAND_R; f.vx = -Math.abs(f.vx) * 0.4; }
-
-      if (Math.abs(f.vy) <= T.grabWindow) {
-        const hold = state.holds.find(h => circleHitsRect(f.x, f.y, HAND_R, h));
-        if (hold) {
-          f.state = 'held';
-          f.x = clamp(f.x, hold.x - hold.w / 2, hold.x + hold.w / 2);
-          f.y = clamp(f.y, hold.y - hold.h / 2, hold.y + hold.h / 2);
-          f.vx = f.vy = 0;
-          hands[state.grip].state = 'returning';
-          state.grip = fi;
-        }
+      advanceHand(f, dt);
+      const hold = grabbableHold(f);
+      if (hold) {
+        f.state = 'held';
+        f.x = clamp(f.x, hold.x - hold.w / 2, hold.x + hold.w / 2);
+        f.y = clamp(f.y, hold.y - hold.h / 2, hold.y + hold.h / 2);
+        f.vx = f.vy = 0;
+        hands[state.grip].state = 'returning';
+        state.grip = fi;
       } else if (f.vy < -T.grabWindow) {
         f.state = 'returning'; // missed — past the apex window
       }
@@ -379,22 +404,49 @@
     if (!d || state.phase === 'over') return;
     const v = launchVelocity(d);
     if (!v) return;
-    const i = 1 - state.grip;
-    const s = shoulder(i);
-    let x = s.x, y = s.y, vx = v.vx, vy = v.vy;
-    const dt = 1 / 60;
-    for (let n = 0; n < 120; n++) {
-      vy -= T.handGravity * dt;
-      x += vx * dt;
-      y += vy * dt;
-      if (vy < -T.grabWindow) break;
-      if (n % 3) continue;
-      const inWindow = Math.abs(vy) <= T.grabWindow;
-      ctx.fillStyle = inWindow ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.35)';
+    const s = shoulder(1 - state.grip);
+    const p = predictThrow(s.x, s.y, v.vx, v.vy);
+
+    // Faint arc.
+    p.points.forEach((pt, n) => {
+      if (n % 6) return;
+      ctx.fillStyle = pt.inWindow ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.3)';
       ctx.beginPath();
-      ctx.arc(x, y, inWindow ? 3.5 : 2, 0, Math.PI * 2);
+      ctx.arc(pt.x, pt.y, pt.inWindow ? 2.5 : 2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    drawTarget(p.x, p.y, p.hit);
+  }
+
+  // Crosshair: solid green where the hand will grab, dashed red when it will miss.
+  function drawTarget(x, y, hit) {
+    const r = HAND_R + 7;
+    const pulse = hit ? 1 + Math.sin(state.time * 10) * 0.08 : 1;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(pulse, pulse);
+    ctx.strokeStyle = hit ? '#5dff8a' : 'rgba(255, 110, 110, 0.85)';
+    ctx.lineWidth = hit ? 3 : 2;
+    if (!hit) ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      ctx.moveTo(ax * (r - 4), ay * (r - 4));
+      ctx.lineTo(ax * (r + 6), ay * (r + 6));
+    }
+    ctx.stroke();
+    if (hit) {
+      ctx.fillStyle = '#5dff8a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
   }
 
   function drawClimber() {
@@ -485,15 +537,16 @@
 
     ctx.textAlign = 'center';
     const cx = ox + (WORLD_W * scale) / 2;
-    if (state.phase === 'ready') {
+    if (state.phase === 'ready' && !state.drag) {
+      const by = cssH * 0.14;
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      roundRect(cx - 160, cssH * 0.62, 320, 76, 12);
+      roundRect(cx - 160, by, 320, 76, 12);
       ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 17px system-ui, sans-serif';
-      ctx.fillText('Drag down, then release', cx, cssH * 0.62 + 30);
+      ctx.fillText('Drag down, then release', cx, by + 30);
       ctx.font = '14px system-ui, sans-serif';
-      ctx.fillText('Grab a ledge near the top of the arc', cx, cssH * 0.62 + 54);
+      ctx.fillText('Aim for the green crosshair', cx, by + 54);
     } else if (state.phase === 'over') {
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0, 0, cssW, cssH);
