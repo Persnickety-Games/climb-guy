@@ -26,7 +26,7 @@ Ideas captured for later. Nothing here is built yet unless marked done.
 
 ## Power-ups (done)
 
-Balloons pop when a hand passes through them. Green balloons are power-ups. The first appears between 50 and 75 m, then one every 35–55 m, so there is never more than one on screen. Red balloons are power-downs. The first appears between 140 and 160 m, and after that a balloon (green or red) appears every 20–35 m. Add `?powerups` to the URL to get balloons from the start for testing.
+Balloons pop when a hand passes through them. Green balloons are power-ups. The first appears between 30 and 50 m, then one every 35–55 m, so there is never more than one on screen. Red balloons are power-downs. The first appears between 125 and 150 m, and after that a balloon (green or red) appears every 20–35 m. Add `?powerups` to the URL to get balloons from the start for testing.
 
 | Balloon | Effect |
 | --- | --- |

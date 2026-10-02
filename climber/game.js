@@ -8,7 +8,8 @@
 // A held arm is elastic: let go with the lower hand and the upper arm flings you up.
 // Balloons pop when a hand passes through them: green = power-up, red = power-down.
 // Add ?powerups to the URL to get balloons from the start (for testing).
-// Moving ledges slide along their long side from 100-125 m (?moving: from the start).
+// Moving ledges slide along their long side from 75-100 m (?moving: from the start).
+// Ghost ledges (faint, dotted, can't be grabbed) appear from 175-200 m (?ghosts: from the start).
 //
 // World units: the play area is 400 units wide; y points UP (height).
 
@@ -159,6 +160,7 @@
     state.baseY = state.maxY = state.body.y;
     state.nextBalloonM = EARLY ? 3 : rand(...FIRST_BALLOON_M);
     state.nextMoverM = MOVERS_EARLY ? 2 : rand(...FIRST_MOVER_M);
+    state.nextGhostM = GHOSTS_EARLY ? 2 : rand(...FIRST_GHOST_M);
   }
 
   function letGo(i) {
@@ -170,7 +172,7 @@
   }
 
   function holdUnder(h) {
-    return state.holds.find(o => !o.broken && circleHitsRect(h.x, h.y, HAND_R, o)) || null;
+    return state.holds.find(o => !o.broken && !o.ghost && circleHitsRect(h.x, h.y, HAND_R, o)) || null;
   }
 
   // ---------- Level generation ----------
@@ -215,6 +217,7 @@
     }
     if (state.phase === 'ready' && y < state.body.y) centerForDrop(row);
     maybeMakeMover(row, y);
+    maybeAddGhost(row, y);
     state.holds.push(...row);
     state.lastRow = row;
   }
@@ -235,7 +238,7 @@
 
   // ---------- Moving ledges ----------
   const MOVERS_EARLY = new URLSearchParams(location.search).has('moving');
-  const FIRST_MOVER_M = [100, 125];
+  const FIRST_MOVER_M = [75, 100];
   // Height between moving ledges: starts a bit more often than balloons and
   // tightens as you climb.
   function moverGapM(m) {
@@ -277,10 +280,40 @@
     }
   }
 
+  // ---------- Ghost ledges ----------
+  // Decoys: faint with a dotted outline, and hands pass straight through them.
+  // They're added alongside real ledges, never in place of one, so the climb stays possible.
+  const GHOSTS_EARLY = new URLSearchParams(location.search).has('ghosts');
+  const FIRST_GHOST_M = [175, 200];
+
+  function ghostGapM(m) {
+    const k = clamp((m - FIRST_GHOST_M[0]) / 500, 0, 1);
+    return lerp(30, 10, k) * rand(0.7, 1.3);
+  }
+
+  function maybeAddGhost(row, y) {
+    if (state.phase !== 'playing' || state.nextGhostM == null) return;
+    const m = (y - state.baseY) / UNITS_PER_METER;
+    if (m < state.nextGhostM) return;
+    // Find a spot in this row that doesn't overlap a real ledge.
+    const w = rand(55, 130), h = rand(14, 22);
+    for (let tries = 0; tries < 12; tries++) {
+      const x = rand(w / 2 + 6, WORLD_W - w / 2 - 6);
+      if (row.some(o => Math.abs(o.x - x) < (o.w + w) / 2 + 12)) continue;
+      state.holds.push({
+        x, y: y + rand(-15, 15), w, h, ghost: true,
+        color: HOLD_COLORS[(Math.random() * HOLD_COLORS.length) | 0],
+      });
+      state.nextGhostM = m + ghostGapM(m);
+      return;
+    }
+    // No room in this row; try the next one.
+  }
+
   // ---------- Power-ups ----------
   const EARLY = new URLSearchParams(location.search).has('powerups');
-  const FIRST_BALLOON_M = [50, 75];      // the first power-up appears somewhere in this range
-  const BAD_FROM_M = EARLY ? [5, 5] : [140, 160]; // power-downs start somewhere in this range,
+  const FIRST_BALLOON_M = [30, 50];      // the first power-up appears somewhere in this range
+  const BAD_FROM_M = EARLY ? [5, 5] : [125, 150]; // power-downs start somewhere in this range,
                                                   // with the first one guaranteed there
   // Height between balloons. A phone screen shows ~22 m, so before power-downs
   // there's never more than one balloon on screen.
@@ -390,7 +423,7 @@
       if (o.seen || o.y - o.h / 2 > top) continue;
       o.seen = true;
       if (active('swollen')) swell(o);
-      if (active('breakaway')) { o.breakable = true; o.heldFor = 0; }
+      if (active('breakaway') && !o.ghost) { o.breakable = true; o.heldFor = 0; }
     }
   }
 
@@ -760,6 +793,22 @@
   }
 
   function drawLedge(h) {
+    if (h.ghost) {
+      // Faint fill and a dotted outline: obvious if you look, easy to miss in a hurry.
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = h.color;
+      roundRect(h.x - h.w / 2, h.y - h.h / 2, h.w, h.h, 4);
+      ctx.fill();
+      ctx.globalAlpha = 0.6;
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 4]);
+      roundRect(h.x - h.w / 2, h.y - h.h / 2, h.w, h.h, 4);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      return;
+    }
     // A breakaway ledge shakes harder the longer it's held.
     const strain = h.breakable && !h.broken ? h.heldFor / BREAK_SECS : 0;
     const x = h.x + (strain ? Math.sin(state.time * 70) * strain * 2.5 : 0);
