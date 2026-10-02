@@ -18,7 +18,7 @@ canvas {
   touch-action: none;
 }
 
-#tune-btn {
+#tune-btn, #mute-btn {
   position: fixed;
   top: max(10px, env(safe-area-inset-top));
   right: 10px;
@@ -31,6 +31,8 @@ canvas {
   font-size: 20px;
   cursor: pointer;
 }
+
+#mute-btn { right: 58px; font-size: 18px; }
 
 #tune {
   position: fixed;
@@ -68,7 +70,7 @@ canvas {
   position: fixed;
   left: 0;
   right: 0;
-  top: calc(40% + 112px);
+  top: calc(30% + 136px);
   display: flex;
   justify-content: center;
   gap: 10px;
@@ -100,3 +102,17 @@ canvas {
   min-height: 18px;
   opacity: 0.9;
 }
+
+#name-input {
+  flex-basis: 100%;
+  max-width: 260px;
+  margin: 4px auto 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font-size: 16px; /* 16px stops iOS zooming in on focus */
+  text-align: center;
+}
+#name-input::placeholder { color: rgba(255, 255, 255, 0.55); }

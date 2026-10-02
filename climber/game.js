@@ -66,6 +66,7 @@
   const DRAG_START_PX = 12;  // thumb movement that turns a tap into a throw
   const AIM_WINDOW_MS = 150; // ...but only this soon after touching; after that a grip is locked
   const LEFT = 0, RIGHT = 1;
+  const GAME_NAME = 'Two Thumbs Up';
   const SIDE_COLOR = ['#ff5fa8', '#ffd166']; // left: pink (reads well on the blue sky), right: yellow
 
   // ---------- Canvas ----------
@@ -130,6 +131,18 @@
       badFromM: rand(...BAD_FROM_M), // where power-downs start this run
       best: store.get('climber2.best', 0),
       newBest: false,
+      bestAtStart: store.get('climber2.best', 0),
+      starsList: [],           // collectible stars { x, y, got }
+      starCount: 0,
+      popped: [],              // icons of balloons popped this run, for the share text
+      birds: [],
+      wind: { a: 0, target: 0, until: 0, next: 0 },
+      windBits: [],            // streaks and leaves showing the wind
+      confetti: [],
+      banner: null,            // { text, sub, at, small }
+      grinUntil: 0,
+      flinging: false,
+      screamed: false,
     };
     placeIdle(LEFT);
     placeIdle(RIGHT);
@@ -161,6 +174,13 @@
     state.nextBalloonM = EARLY ? 3 : rand(...FIRST_BALLOON_M);
     state.nextMoverM = MOVERS_EARLY ? 2 : rand(...FIRST_MOVER_M);
     state.nextGhostM = GHOSTS_EARLY ? 2 : rand(...FIRST_GHOST_M);
+    state.nextIcyM = ICY_EARLY ? 2 : rand(...FIRST_ICY_M);
+    state.windFromM = WIND_EARLY ? 2 : rand(...FIRST_WIND_M);
+    state.birdFromM = BIRDS_EARLY ? 2 : rand(...FIRST_BIRD_M);
+    state.nextStarM = rand(8, 14);
+    state.nextCheckpointM = CHECKPOINT_EVERY_M;
+    state.nextMilestoneM = CHECKPOINT_EVERY_M;
+    state.landmarkIdx = 0;
   }
 
   function letGo(i) {
@@ -218,8 +238,15 @@
       best.x += dir * (bestGap - MAX_ROW_SHIFT + rand(0, 40));
     }
     if (state.phase === 'ready' && y < state.body.y) centerForDrop(row);
-    maybeMakeMover(row, y);
-    maybeAddGhost(row, y);
+    const checkpoint = checkpointFor(y);
+    if (checkpoint) {
+      row.length = 0;
+      row.push(checkpoint);
+    } else {
+      maybeMakeMover(row, y);
+      maybeAddGhost(row, y);
+      maybeMakeIcy(row, y);
+    }
     state.holds.push(...row);
     state.lastRow = row;
   }
@@ -312,6 +339,233 @@
     // No room in this row; try the next one.
   }
 
+  // ---------- Checkpoints, icy ledges, stars, wind, birds ----------
+  const PARAMS = new URLSearchParams(location.search);
+  const ICY_EARLY = PARAMS.has('icy');
+  const WIND_EARLY = PARAMS.has('wind');
+  const BIRDS_EARLY = PARAMS.has('birds');
+  const CHECKPOINT_EVERY_M = 100;
+  const FIRST_ICY_M = [225, 250];
+  const FIRST_WIND_M = [275, 300];
+  const FIRST_BIRD_M = [325, 350];
+  const ICE_ACCEL = 25;   // how quickly a hand starts sliding on ice
+  const ICE_MAX = 80;
+  const STAR_R = 11;
+  const BIRD_R = 16;
+
+  const climbedM = () => (state.maxY - state.baseY) / UNITS_PER_METER;
+
+  // A gap that starts at ~30 m and tightens to ~10 m over 500 m.
+  const featureGapM = (m, from) => lerp(30, 10, clamp((m - from) / 500, 0, 1)) * rand(0.7, 1.3);
+
+  // Every 100 m, a wide, sturdy golden ledge with a flag.
+  function checkpointFor(y) {
+    if (state.phase !== 'playing') return null;
+    const m = (y - state.baseY) / UNITS_PER_METER;
+    if (m < state.nextCheckpointM) return null;
+    const cp = { x: WORLD_W / 2, y, w: 230, h: 24, color: '#c9a227', checkpoint: state.nextCheckpointM };
+    state.nextCheckpointM += CHECKPOINT_EVERY_M;
+    return cp;
+  }
+
+  // Icy ledges: a hand holding one slowly slides off the end.
+  function maybeMakeIcy(row, y) {
+    if (state.phase !== 'playing' || state.nextIcyM == null) return;
+    const m = (y - state.baseY) / UNITS_PER_METER;
+    if (m < state.nextIcyM) return;
+    const o = row.find(o => o.w > o.h && !o.move);
+    if (!o) return; // try the next row
+    o.icy = true;
+    o.color = '#bfe3f2';
+    state.nextIcyM = m + featureGapM(m, FIRST_ICY_M[0]);
+  }
+
+  function slideOnIce(dt) {
+    state.hands.forEach((h, i) => {
+      if (h.state !== 'held' || !h.hold || !h.hold.icy) return;
+      const o = h.hold;
+      // Slides toward whichever side the body hangs on.
+      if (!h.slideDir) h.slideDir = Math.sign(state.body.x - h.x) || (Math.random() < 0.5 ? -1 : 1);
+      h.slideV = Math.min((h.slideV || 0) + ICE_ACCEL * dt, ICE_MAX);
+      h.x += h.slideDir * h.slideV * dt;
+      if (Math.abs(h.x - o.x) > o.w / 2 + HAND_R * 0.5) {
+        letGo(i);
+        const t = state.thumbs[i];
+        if (t) { t.mode = 'none'; t.canAim = false; }
+      }
+    });
+  }
+
+  // Stars to collect, placed off the safe route (near the walls or in open air).
+  function spawnStars() {
+    if (state.phase !== 'playing') return;
+    while (state.baseY + state.nextStarM * UNITS_PER_METER < state.cam + viewH + 600) {
+      const y = state.baseY + state.nextStarM * UNITS_PER_METER;
+      let x = 0;
+      for (let tries = 0; tries < 12; tries++) {
+        x = Math.random() < 0.65 ? (Math.random() < 0.5 ? rand(22, 80) : rand(320, 378)) : rand(40, 360);
+        if (!state.holds.some(o => Math.abs(o.y - y) < 50 && Math.abs(o.x - x) < o.w / 2 + 30)) break;
+      }
+      state.starsList.push({ x, y, got: 0 });
+      state.nextStarM += rand(6, 12);
+    }
+  }
+
+  function collectStars() {
+    for (const st of state.starsList) {
+      if (st.got) continue;
+      if (state.hands.some(h => Math.hypot(h.x - st.x, h.y - st.y) < STAR_R + HAND_R)) {
+        st.got = state.time;
+        state.starCount++;
+        sfx.star();
+      }
+    }
+  }
+
+  // Wind: gusts push thrown hands sideways. (The aim arc doesn't include the wind.)
+  function stepWind(dt) {
+    const w = state.wind;
+    const m = climbedM();
+    if (state.phase === 'playing' && m >= state.windFromM) {
+      if (w.target === 0 && state.time >= w.next) {
+        const k = clamp((m - state.windFromM) / 400, 0, 1);
+        w.target = (Math.random() < 0.5 ? -1 : 1) * rand(250, 450) * (1 + k);
+        w.until = state.time + rand(2.5, 4.5);
+        sfx.gust();
+      } else if (w.target !== 0 && state.time >= w.until) {
+        const k = clamp((m - state.windFromM) / 400, 0, 1);
+        w.target = 0;
+        w.next = state.time + lerp(10, 5, k) * rand(0.7, 1.3);
+      }
+    }
+    w.a += (w.target - w.a) * (1 - Math.exp(-3 * dt));
+    for (const h of state.hands) if (h.state === 'flying') h.vx += w.a * dt;
+
+    // Streaks and leaves drifting with the wind (screen space).
+    const strength = Math.abs(w.a);
+    if (strength > 40 && Math.random() < strength / 2400) { // ~10-20 per second in a strong gust
+      const dir = Math.sign(w.a);
+      state.windBits.push({
+        x: dir > 0 ? -30 : cssW + 30, y: rand(0, cssH),
+        vx: dir * rand(250, 500) * (strength / 450), vy: rand(-20, 20),
+        leaf: Math.random() < 0.3, spin: rand(0, 6.3), life: 0,
+        color: Math.random() < 0.5 ? '#7cbf5a' : '#e0a040',
+      });
+    }
+    for (const b of state.windBits) { b.x += b.vx * dt; b.y += b.vy * dt + Math.sin(b.life * 4 + b.spin) * 0.6; b.life += dt; b.spin += dt * 5; }
+    state.windBits = state.windBits.filter(b => b.x > -60 && b.x < cssW + 60 && b.life < 4);
+  }
+
+  // Birds fly across and knock thrown hands off course.
+  function stepBirds(dt) {
+    const m = climbedM();
+    if (state.phase === 'playing' && m >= state.birdFromM && state.time >= (state.nextBirdAt || 0)) {
+      const k = clamp((m - state.birdFromM) / 400, 0, 1);
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      state.birds.push({
+        dir, x: dir > 0 ? -30 : WORLD_W + 30,
+        y: state.cam + viewH * rand(0.35, 0.92), speed: rand(110, 190), phase: rand(0, 6.3),
+      });
+      state.nextBirdAt = state.time + lerp(12, 5, k) * rand(0.7, 1.3);
+    }
+    for (const b of state.birds) {
+      b.x += b.dir * b.speed * dt;
+      b.y += Math.sin(state.time * 3 + b.phase) * 12 * dt;
+      for (const h of state.hands) {
+        if (h.state !== 'flying' || Math.hypot(h.x - b.x, h.y - b.y) > BIRD_R + HAND_R) continue;
+        h.vx = b.dir * 380;
+        h.vy = -150;
+        h.autoTarget = null;
+        if (!b.hitAt || state.time - b.hitAt > 0.5) {
+          b.hitAt = state.time;
+          sfx.bird();
+          burstConfetti(ox + b.x * scale, cssH - (b.y - state.cam) * scale, 10, ['#ddd', '#999', '#fff']);
+        }
+      }
+    }
+    state.birds = state.birds.filter(b => b.x > -60 && b.x < WORLD_W + 60);
+  }
+
+  // ---------- Celebrations ----------
+  const PARAMS_CHALLENGE = (() => {
+    const m = parseInt(PARAMS.get('beat'), 10);
+    if (!(m > 0)) return null;
+    const name = (PARAMS.get('from') || '').replace(/[^\p{L}\p{N} '._-]/gu, '').trim().slice(0, 20);
+    return { m, name };
+  })();
+  const CHALLENGE = PARAMS_CHALLENGE;
+  const challengerName = () => (CHALLENGE.name ? CHALLENGE.name : 'your friend');
+  const challengerPossessive = () => (CHALLENGE.name ? `${CHALLENGE.name}'s` : "Your friend's");
+
+  // Real things you climb past, at their real heights.
+  const LANDMARKS = [
+    [5.5, '🦒', 'a giraffe'], [12, '🦕', 'a Brachiosaurus'], [21, '🎈', 'a hot air balloon'],
+    [46, '🗽', 'the Statue of Liberty'], [84, '🌲', 'the biggest tree on Earth'], [96, '🕰️', 'Big Ben'],
+    [108, '🦖', 'Godzilla'], [139, '🔺', 'the Great Pyramid'], [269, '🚢', 'the Titanic (on end)'],
+    [330, '🗼', 'the Eiffel Tower'], [381, '🏙️', 'the Empire State Building'],
+    [541, '🏢', 'One World Trade Center'], [828, '🌆', 'the Burj Khalifa'], [979, '💧', 'Angel Falls'],
+  ];
+
+  function celebrate(text, sub, small = false) {
+    state.banner = { text, sub, at: state.time, small };
+    if (!small) burstConfetti(cssW / 2, cssH * 0.3, 60);
+  }
+
+  function burstConfetti(x, y, n, colors = ['#ffd166', '#ff5fa8', '#7dffb0', '#7cc6ff', '#fff']) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2), sp = rand(80, 420);
+      state.confetti.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 150, life: 0, max: rand(0.9, 1.6), color: colors[i % colors.length], spin: rand(0, 6) });
+    }
+  }
+
+  function stepConfetti(dt) {
+    for (const c of state.confetti) { c.vy += 600 * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.life += dt; c.spin += dt * 8; }
+    state.confetti = state.confetti.filter(c => c.life < c.max);
+  }
+
+  // Milestones, your best, a friend's challenge, and landmarks you pass.
+  function checkCrossings() {
+    if (state.phase !== 'playing') return;
+    const m = climbedM();
+    while (state.landmarkIdx < LANDMARKS.length && m >= LANDMARKS[state.landmarkIdx][0]) {
+      const [, icon, name] = LANDMARKS[state.landmarkIdx++];
+      celebrate(`${icon} Higher than ${name}!`, '', true);
+    }
+    while (m >= state.nextMilestoneM) {
+      celebrate(`${state.nextMilestoneM} m!`, 'Checkpoint');
+      sfx.milestone();
+      state.nextMilestoneM += CHECKPOINT_EVERY_M;
+    }
+    if (!state.passedBest && state.bestAtStart > 0 && m > state.bestAtStart) {
+      state.passedBest = true;
+      celebrate('New best!', `Beat your ${state.bestAtStart} m`);
+      sfx.fanfare();
+    }
+    if (CHALLENGE && !state.beatChallenge && m > CHALLENGE.m) {
+      state.beatChallenge = true;
+      celebrate(`You beat ${challengerName()}!`, `${CHALLENGE.m} m`);
+      sfx.fanfare();
+    }
+  }
+
+  // Grin and a whoosh on a big fling; a scream when falling with nothing to hold.
+  function stepMood() {
+    const { body, hands } = state;
+    const holding = hands.some(h => h.state === 'held');
+    if (!state.flinging && holding && body.vy > 650) {
+      state.flinging = true;
+      state.grinUntil = state.time + 1.2;
+      sfx.fling();
+    } else if (state.flinging && body.vy < 200) {
+      state.flinging = false;
+    }
+    if (holding) state.screamed = false;
+    else if (!state.screamed && state.phase === 'playing' && !state.rocket && body.vy < -300) {
+      state.screamed = true;
+      sfx.scream();
+    }
+  }
+
   // ---------- Power-ups ----------
   const EARLY = new URLSearchParams(location.search).has('powerups');
   const FIRST_BALLOON_M = [30, 50];      // the first power-up appears somewhere in this range
@@ -382,7 +636,11 @@
 
   // hand: which hand popped the balloon (Ouch!! only hurts that one).
   function applyPower(kind, hand) {
+    if (!POWERS[kind]) return;
     state.toast = { kind, at: state.time };
+    state.popped.push(POWERS[kind].icon);
+    sfx.pop();
+    (POWERS[kind].good ? sfx.good : sfx.bad)();
     if (kind === 'rocket') startRocket();
     else if (kind === 'ouch') state.effects[`ouch:${hand}`] = state.time + OUCH_SECS;
     else state.effects[kind] = state.time + EFFECT_SECS;
@@ -437,7 +695,7 @@
       if (o.seen || o.y - o.h / 2 > top) continue;
       o.seen = true;
       if (active('swollen')) swell(o);
-      if (active('breakaway') && !o.ghost) { o.breakable = true; o.heldFor = 0; }
+      if (active('breakaway') && !o.ghost && !o.checkpoint) { o.breakable = true; o.heldFor = 0; }
     }
   }
 
@@ -468,6 +726,7 @@
       if (o.heldFor >= BREAK_SECS) {
         o.broken = true;
         o.vy = 0;
+        sfx.crack();
         state.hands.forEach((h, i) => { if (h.hold === o) letGo(i); });
       }
     }
@@ -491,6 +750,7 @@
   }
 
   function onDown(e) {
+    sfx.unlock(); // browsers only allow sound after a touch
     if (!tunePanel.hidden) return;
     e.preventDefault();
     if (state.phase === 'over') {
@@ -582,6 +842,9 @@
     h.y = clamp(h.y, hold.y - hold.h / 2, hold.y + hold.h / 2);
     h.vx = h.vy = 0;
     h.hold = hold;
+    h.slideDir = 0;
+    h.slideV = 0;
+    sfx.grab();
     // Auto-grab: holding is automatic, and the other hand lets go once this one
     // has hold of something new. A hand left auto-held after the timer ends also
     // lets go when the other hand grabs.
@@ -611,6 +874,7 @@
     if (h.state !== 'idle' && h.state !== 'returning') return;
     const s = shoulder(i);
     Object.assign(h, { state: 'flying', x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y });
+    sfx.throw();
     h.autoTarget = active('autoGrab') ? autoGrabTarget(i, v) : null;
     startPlaying();
   }
@@ -643,6 +907,10 @@
     const { body, hands } = state;
     markNewLedges();
     updateLedges(dt);
+    slideOnIce(dt);
+    stepWind(dt);
+    stepBirds(dt);
+    stepConfetti(dt);
 
     if (state.rocket) {
       body.vx = 0;
@@ -656,6 +924,7 @@
       }
       hands.forEach((h, i) => { if (h.state !== 'flying') { h.state = 'idle'; placeIdle(i); } });
       state.maxY = Math.max(state.maxY, body.y);
+      checkCrossings();
       stepWater(dt);
       state.cam += (body.y - viewH * 0.6 - state.cam) * (1 - Math.exp(-8 * dt)); // lags to ~80% up the screen
       return;
@@ -722,7 +991,10 @@
     if (state.phase === 'playing') {
       state.maxY = Math.max(state.maxY, body.y);
       popBalloons();
+      collectStars();
+      checkCrossings();
     }
+    stepMood();
     stepWater(dt);
 
     // Camera follows the body, never dipping far below the water.
@@ -744,6 +1016,7 @@
   }
 
   function gameOver() {
+    sfx.splash();
     state.phase = 'over';
     state.overAt = state.time;
     state.unit = pickUnit(heightMeters());
@@ -764,10 +1037,255 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  function skyColor(t) {
-    const a = [135, 197, 234], b = [26, 35, 80];
-    const c = a.map((v, i) => Math.round(lerp(v, b[i], t)));
+  // Sky by height: day, then dusk, then space.
+  const SKY = [[0, [135, 197, 234]], [250, [95, 150, 205]], [450, [70, 60, 120]], [650, [14, 14, 34]]];
+  function skyAt(m) {
+    let i = 0;
+    while (i < SKY.length - 2 && m > SKY[i + 1][0]) i++;
+    const [m0, a] = SKY[i], [m1, b] = SKY[i + 1];
+    const t = clamp((m - m0) / (m1 - m0), 0, 1);
+    const c = a.map((v, k) => Math.round(lerp(v, b[k], t)));
     return `rgb(${c[0]},${c[1]},${c[2]})`;
+  }
+
+  // Scenery, made once: a city skyline, clouds up to ~600 m, and a star field.
+  const SKYLINE = (() => {
+    const out = [];
+    for (let x = -60; x < WORLD_W + 60;) {
+      const w = rand(28, 70);
+      out.push({ x, w, h: rand(70, 280), lit: Math.random() });
+      x += w + rand(2, 10);
+    }
+    return out;
+  })();
+  const CLOUDS = Array.from({ length: 90 }, () => ({
+    y: START_Y + rand(60, 650) * UNITS_PER_METER, x: rand(-80, WORLD_W + 80), size: rand(25, 60), speed: rand(3, 10),
+  }));
+  const STARFIELD = Array.from({ length: 140 }, () => ({ x: Math.random(), y: Math.random(), r: rand(0.5, 1.6), tw: rand(0, 6.3) }));
+
+  // Screen y for a world height, with parallax factor f (smaller = farther away).
+  const parallaxY = (y, f) => cssH - (y - state.cam) * scale * f;
+
+  function drawScenery() {
+    const camM = (state.cam - START_Y) / UNITS_PER_METER;
+    // Stars fade in as the sky darkens.
+    const starA = clamp((camM - 380) / 250, 0, 1);
+    if (starA > 0) {
+      for (const st of STARFIELD) {
+        ctx.globalAlpha = starA * (0.5 + 0.5 * Math.sin(state.time * 2 + st.tw));
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(ox + st.x * WORLD_W * scale, st.y * cssH, st.r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    // City skyline far below, scrolling at half speed.
+    const ground = parallaxY(START_Y - 80, 0.5);
+    if (ground > -10) {
+      for (const b of SKYLINE) {
+        const top = ground - b.h * scale * 0.7;
+        if (top > cssH) continue;
+        ctx.fillStyle = 'rgba(30, 55, 90, 0.35)';
+        ctx.fillRect(ox + b.x * scale, top, b.w * scale, ground - top + cssH);
+        ctx.fillStyle = 'rgba(255, 230, 150, 0.25)';
+        for (let wy = top + 8; wy < ground - 6; wy += 14) {
+          for (let wx = 6; wx < b.w * scale - 6; wx += 12) {
+            if (((wx * 7 + wy * 13 + b.lit * 100) | 0) % 5 === 0) ctx.fillRect(ox + b.x * scale + wx, wy, 4, 5);
+          }
+        }
+      }
+    }
+    // Drifting clouds, thinning out toward space.
+    const cloudA = 1 - clamp((camM - 450) / 200, 0, 1);
+    if (cloudA > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${0.35 * cloudA})`;
+      for (const c of CLOUDS) {
+        const sy = parallaxY(c.y, 0.8);
+        if (sy < -80 || sy > cssH + 80) continue;
+        const span = WORLD_W + 200;
+        const cx = ox + ((((c.x + state.time * c.speed) + 100) % span + span) % span - 100) * scale;
+        const r = c.size * scale * 0.5;
+        ctx.beginPath();
+        ctx.arc(cx, sy, r, 0, Math.PI * 2);
+        ctx.arc(cx + r * 0.9, sy + r * 0.2, r * 0.75, 0, Math.PI * 2);
+        ctx.arc(cx - r * 0.9, sy + r * 0.25, r * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Lines and labels in the world: your best, a friend's challenge, landmarks, checkpoints.
+  function drawMarkers() {
+    screenTransform();
+    const sy = (y) => cssH - (y - state.cam) * scale;
+    const left = ox, right = ox + WORLD_W * scale;
+    const line = (y, color, label, dashed = true) => {
+      const yy = sy(y);
+      if (yy < -20 || yy > cssH + 20) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      if (dashed) ctx.setLineDash([10, 8]);
+      ctx.beginPath(); ctx.moveTo(left, yy); ctx.lineTo(right, yy); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = color;
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(label, right - 8, yy - 6);
+      ctx.textAlign = 'left';
+    };
+    if (state.phase !== 'ready') {
+      if (state.bestAtStart > 0) {
+        line(state.baseY + state.bestAtStart * UNITS_PER_METER, 'rgba(255, 209, 102, 0.85)', `Your best · ${state.bestAtStart} m`);
+      }
+      if (CHALLENGE) {
+        const done = state.beatChallenge;
+        line(state.baseY + CHALLENGE.m * UNITS_PER_METER, done ? 'rgba(125, 255, 176, 0.9)' : 'rgba(125, 249, 255, 0.9)',
+          done ? `${challengerPossessive()} ${CHALLENGE.m} m ✓` : `Beat ${challengerPossessive()} ${CHALLENGE.m} m`);
+      }
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      for (const [m, icon, name] of LANDMARKS) {
+        const yy = sy(state.baseY + m * UNITS_PER_METER);
+        if (yy < -20 || yy > cssH + 20) continue;
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(right - 70, yy); ctx.lineTo(right, yy); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.fillText(`${icon} ${name.replace(/^(a|the) /, '')} · ${m} m`, right - 6, yy - 4);
+      }
+      ctx.textAlign = 'left';
+    }
+    // Checkpoint flags.
+    for (const o of state.holds) {
+      if (!o.checkpoint) continue;
+      const yy = sy(o.y + o.h / 2), xx = ox + (o.x + o.w / 2 - 14) * scale;
+      if (yy < -60 || yy > cssH + 20) continue;
+      ctx.strokeStyle = '#eee';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, yy - 36); ctx.stroke();
+      ctx.fillStyle = '#ff5f5f';
+      ctx.beginPath(); ctx.moveTo(xx, yy - 36); ctx.lineTo(xx - 24, yy - 29); ctx.lineTo(xx, yy - 22); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${o.checkpoint} m`, ox + o.x * scale, yy - 6);
+      ctx.textAlign = 'left';
+    }
+    worldTransform();
+  }
+
+  function drawStars() {
+    screenTransform();
+    for (const st of state.starsList) {
+      const sx = ox + st.x * scale, sy = cssH - (st.y - state.cam) * scale;
+      if (sy < -30 || sy > cssH + 30) continue;
+      const k = st.got ? (state.time - st.got) / 0.4 : 0;
+      const r = STAR_R * scale * (1 + k) * (1 + 0.08 * Math.sin(state.time * 5 + st.x));
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = '#ffe14d';
+      ctx.strokeStyle = '#b8860b';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r;
+        i ? ctx.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr) : ctx.moveTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    worldTransform();
+  }
+
+  function drawBirds() {
+    for (const b of state.birds) {
+      const flap = Math.sin(state.time * 14 + b.phase) * 7;
+      ctx.strokeStyle = '#2b2b33';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(b.x - 13, b.y + flap); ctx.quadraticCurveTo(b.x - 6, b.y + 4, b.x, b.y);
+      ctx.quadraticCurveTo(b.x + 6, b.y + 4, b.x + 13, b.y + flap);
+      ctx.stroke();
+      ctx.fillStyle = '#2b2b33';
+      ctx.beginPath(); ctx.ellipse(b.x, b.y - 1, 6, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#f0a020';
+      ctx.beginPath(); ctx.moveTo(b.x + b.dir * 6, b.y); ctx.lineTo(b.x + b.dir * 11, b.y - 1); ctx.lineTo(b.x + b.dir * 6, b.y - 3); ctx.fill();
+    }
+  }
+
+  function drawWindAndConfetti() {
+    for (const b of state.windBits) {
+      if (b.leaf) {
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(b.spin);
+        ctx.fillStyle = b.color;
+        ctx.beginPath(); ctx.ellipse(0, 0, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - Math.sign(b.vx) * 40, b.y); ctx.stroke();
+      }
+    }
+    if (state.phase === 'over') return;
+    for (const c of state.confetti) {
+      ctx.globalAlpha = 1 - c.life / c.max;
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(c.spin);
+      ctx.fillStyle = c.color;
+      ctx.fillRect(-4, -2, 8, 4);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Big centered text for milestones and records; a smaller line for landmarks.
+  function drawBanner() {
+    const b = state.banner;
+    if (!b || state.phase === 'over') return;
+    const age = state.time - b.at, dur = b.small ? 2.2 : 2.4;
+    if (age > dur) return;
+    ctx.globalAlpha = Math.min(1, age * 6, (dur - age) * 2);
+    ctx.textAlign = 'center';
+    const cx = cssW / 2, y = cssH * 0.3;
+    if (b.small) {
+      ctx.font = 'bold 15px system-ui, sans-serif';
+      const w = ctx.measureText(b.text).width + 28;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      roundRect(cx - w / 2, y - 20, w, 30, 15);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(b.text, cx, y);
+    } else {
+      const pop = 1 + Math.max(0, 0.25 - age) * 1.2;
+      ctx.font = `900 ${Math.round(34 * pop)}px system-ui, sans-serif`;
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.strokeText(b.text, cx, y);
+      ctx.fillStyle = '#ffd166';
+      ctx.fillText(b.text, cx, y);
+      if (b.sub) {
+        ctx.font = 'bold 14px system-ui, sans-serif';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(b.sub, cx, y + 24);
+      }
+    }
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+  }
+
+  // "Aaah!" over the climber while falling.
+  function drawScream() {
+    if (!state.screamed || state.phase !== 'playing') return;
+    const sx = ox + state.body.x * scale, sy = cssH - (state.body.y - state.cam) * scale;
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Aaah!', sx + Math.sin(state.time * 40) * 1.5, sy - 30);
+    ctx.textAlign = 'left';
   }
 
   function roundRect(x, y, w, h, r) {
@@ -780,12 +1298,16 @@
     ctx.fillStyle = '#0b1d2e';
     ctx.fillRect(0, 0, cssW, cssH);
 
-    const t = clamp(state.cam / 12000, 0, 1);
+    const camM = (state.cam - START_Y) / UNITS_PER_METER;
     const grad = ctx.createLinearGradient(0, 0, 0, cssH);
-    grad.addColorStop(0, skyColor(clamp(t + 0.08, 0, 1)));
-    grad.addColorStop(1, skyColor(t));
+    grad.addColorStop(0, skyAt(camM + viewH / UNITS_PER_METER));
+    grad.addColorStop(1, skyAt(camM));
     ctx.fillStyle = grad;
     ctx.fillRect(ox, 0, WORLD_W * scale, cssH);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(ox, 0, WORLD_W * scale, cssH); ctx.clip();
+    drawScenery();
+    ctx.restore();
 
     // Height markers every 10 m.
     ctx.font = '12px system-ui, sans-serif';
@@ -816,15 +1338,21 @@
       drawLedge(h);
     }
 
+    drawMarkers();
     drawBalloons();
+    drawStars();
+    drawBirds();
     drawAimArcs();
     drawClimber();
     drawWater();
 
     screenTransform();
+    drawWindAndConfetti();
+    drawScream();
     drawOffscreenHands();
     drawThumbs();
     drawHud();
+    drawBanner();
   }
 
   function drawLedge(h) {
@@ -853,6 +1381,22 @@
     ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
     ctx.fillRect(x - h.w / 2 + 2, h.y + h.h / 2 - 4, h.w - 4, 2);
+    if (h.icy) {
+      // Glossy streaks and a glint.
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let k = -h.w / 2 + 10; k < h.w / 2 - 6; k += 22) { ctx.moveTo(x + k, h.y - h.h / 2 + 3); ctx.lineTo(x + k + 7, h.y + h.h / 2 - 3); }
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255,255,255,${0.5 + 0.5 * Math.sin(state.time * 3 + h.x)})`;
+      ctx.beginPath(); ctx.arc(x + h.w / 2 - 8, h.y + 2, 2, 0, Math.PI * 2); ctx.fill();
+    }
+    if (h.checkpoint) {
+      ctx.strokeStyle = '#fff2b0';
+      ctx.lineWidth = 2;
+      roundRect(x - h.w / 2, h.y - h.h / 2, h.w, h.h, 4);
+      ctx.stroke();
+    }
     if (h.swollen) {
       ctx.strokeStyle = 'rgba(160,255,190,0.7)';
       ctx.lineWidth = 2;
@@ -984,6 +1528,7 @@
       ctx.fillStyle = '#1b1b1b';
       ctx.beginPath(); ctx.arc(body.x + ex + (lx / ll) * 2, body.y + 4 + (ly / ll) * 2, 2.2, 0, Math.PI * 2); ctx.fill();
     }
+    drawFace(body, falling);
 
     hands.forEach((h, i) => {
       ctx.fillStyle = SIDE_COLOR[i];
@@ -1003,6 +1548,54 @@
         ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R + 2 + pulse * 3, 0, Math.PI * 2); ctx.stroke();
       }
     });
+  }
+
+  // Mood: screaming when falling, a grin after a big fling, worried near the water.
+  function drawFace(body, falling) {
+    const bx = body.x, by = body.y;
+    const screaming = state.screamed && falling && state.phase !== 'ready';
+    const grinning = state.time < state.grinUntil;
+    const worried = state.phase === 'playing' && body.y - state.water < 220;
+    ctx.strokeStyle = '#3a1a10';
+    ctx.fillStyle = '#3a1a10';
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    if (screaming || worried) {
+      // Worried brows: inner ends raised.
+      ctx.beginPath();
+      ctx.moveTo(bx - 10, by + 9); ctx.lineTo(bx - 3, by + 11.5);
+      ctx.moveTo(bx + 3, by + 11.5); ctx.lineTo(bx + 10, by + 9);
+      ctx.stroke();
+    }
+    if (screaming) {
+      ctx.beginPath(); ctx.ellipse(bx, by - 7, 3.5, 5, 0, 0, Math.PI * 2); ctx.fill();
+    } else if (grinning) {
+      ctx.beginPath();
+      ctx.moveTo(bx - 8, by - 3);
+      for (let t = -1; t <= 1.001; t += 0.25) ctx.lineTo(bx + t * 8, by - 3 - (1 - t * t) * 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(bx - 5, by - 4.5, 10, 1.8);
+    } else if (worried) {
+      ctx.beginPath();
+      for (let t = -1; t <= 1.001; t += 0.25) {
+        const px = bx + t * 5, py = by - 7 + Math.sin(t * Math.PI * 2) * 1.2;
+        t === -1 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      // Sweat drop.
+      ctx.fillStyle = '#8fd3ff';
+      ctx.beginPath(); ctx.arc(bx + 15, by + 6, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(bx + 12.6, by + 7); ctx.lineTo(bx + 15, by + 12); ctx.lineTo(bx + 17.4, by + 7); ctx.fill();
+    } else {
+      ctx.beginPath();
+      for (let t = -1; t <= 1.001; t += 0.25) {
+        const px = bx + t * 5, py = by - 5 - (1 - t * t) * 2.5;
+        t === -1 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
   }
 
   function drawWater() {
@@ -1085,7 +1678,14 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 28px system-ui, sans-serif';
-    ctx.fillText(`${heightMeters()} m`, ox + 14, top + 26);
+    const mText = `${heightMeters()} m`;
+    ctx.fillText(mText, ox + 14, top + 26);
+    if (state.starCount) {
+      const w = ctx.measureText(mText).width;
+      ctx.font = 'bold 16px system-ui, sans-serif';
+      ctx.fillStyle = '#ffe14d';
+      ctx.fillText(`⭐ ${state.starCount}`, ox + 24 + w, top + 25);
+    }
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.fillText(`Best ${state.best} m`, ox + 14, top + 46);
@@ -1112,21 +1712,29 @@
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0, 0, cssW, cssH);
       ctx.fillStyle = '#fff';
+      const y0 = cssH * 0.3;
       ctx.font = 'bold 34px system-ui, sans-serif';
-      ctx.fillText('Splash!', cx, cssH * 0.4);
+      ctx.fillText('Splash!', cx, y0);
       ctx.font = '20px system-ui, sans-serif';
-      ctx.fillText(`${heightMeters()} m`, cx, cssH * 0.4 + 40);
+      ctx.fillText(`${heightMeters()} m${state.starCount ? `  ·  ⭐ ${state.starCount}` : ''}`, cx, y0 + 40);
       ctx.font = '15px system-ui, sans-serif';
       ctx.fillStyle = state.newBest ? '#ffd27a' : 'rgba(255,255,255,0.8)';
-      ctx.fillText(state.newBest ? 'New best!' : `Best ${state.best} m`, cx, cssH * 0.4 + 68);
+      ctx.fillText(state.newBest ? 'New best!' : `Best ${state.best} m`, cx, y0 + 68);
       if (state.unit) {
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         ctx.font = 'italic 14px system-ui, sans-serif';
-        ctx.fillText(`That's ${unitPhrase(state.unit)}`, cx, cssH * 0.4 + 94);
+        ctx.fillText(`That's ${unitPhrase(state.unit)}`, cx, y0 + 94);
+      }
+      if (CHALLENGE) {
+        const left = CHALLENGE.m - heightMeters();
+        ctx.font = 'bold 14px system-ui, sans-serif';
+        ctx.fillStyle = state.beatChallenge ? '#7dffb0' : '#7df9ff';
+        ctx.fillText(state.beatChallenge ? `You beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${CHALLENGE.m} m!`
+          : `${challengerPossessive()} ${CHALLENGE.m} m still stands (${left} m to go)`, cx, y0 + 118);
       }
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText('Tap anywhere to climb again', cx, cssH * 0.4 + 190);
+      ctx.fillText('Tap anywhere to climb again', cx, y0 + 290);
     }
     ctx.textAlign = 'left';
   }
@@ -1217,13 +1825,36 @@
     return `${n} ${n === '1' ? u.one : u.many}`;
   }
 
+  const nameInput = document.getElementById('name-input');
+  nameInput.value = store.get('climber.name', '');
+  nameInput.addEventListener('input', () => store.set('climber.name', nameInput.value.trim().slice(0, 20)));
+
+  // The link carries your height (and name) so a friend gets a line to beat.
+  function shareUrl() {
+    const base = location.origin + location.pathname;
+    const m = heightMeters();
+    if (!m) return base;
+    const p = new URLSearchParams({ beat: String(m) });
+    const name = nameInput.value.trim().slice(0, 20);
+    if (name) p.set('from', name);
+    return `${base}?${p}`;
+  }
+
+  // Wordle-style summary of the run: height, stars, balloons popped, then the water.
+  function runSummary() {
+    const parts = [`🧗 ${heightMeters()} m`];
+    if (state.starCount) parts.push(`⭐ ${state.starCount}`);
+    if (state.popped.length) parts.push(state.popped.slice(0, 12).join(''));
+    parts.push('🌊');
+    return parts.join(' · ');
+  }
+
   function shareText() {
     const m = heightMeters();
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const url = location.origin + location.pathname;
     const u = state.unit;
     const units = u ? ` That's ${unitPhrase(u)}. How many ${u.many} could you climb?` : ' Think you can do better?';
-    return `I climbed ${m} meters before my demise on ${date}.${units} 🧗 ${url}`;
+    return `I climbed ${m} meters before my demise on ${date}.${units}\n${runSummary()}\n${GAME_NAME} 👍👍 ${shareUrl()}`;
   }
 
   // Native share sheet on phones; otherwise copy to the clipboard.
@@ -1275,11 +1906,13 @@
           step(DT);
           generateHolds();
           spawnBalloons();
+          spawnStars();
         }
         acc -= DT;
       }
       state.holds = state.holds.filter(h => h.y > state.water - 300);
       state.balloons = state.balloons.filter(b => b.y > state.water - 100 && !(b.popped && state.time - b.popped > 0.4));
+      state.starsList = state.starsList.filter(st => st.y > state.water - 100 && !(st.got && state.time - st.got > 0.4));
     }
     render();
     syncOverlay();
@@ -1318,6 +1951,16 @@
     Object.assign(T, DEFAULTS);
     store.set('climber3.tuning', T);
     buildTuning();
+  });
+
+  // ---------- Sound toggle ----------
+  const muteBtn = document.getElementById('mute-btn');
+  const syncMute = () => { muteBtn.textContent = sfx.muted ? '🔇' : '🔊'; };
+  syncMute();
+  muteBtn.addEventListener('click', () => {
+    sfx.unlock();
+    sfx.setMuted(!sfx.muted);
+    syncMute();
   });
 
   // Read-only handle for debugging in the browser console.

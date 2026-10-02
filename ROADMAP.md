@@ -1,4 +1,4 @@
-# Climber roadmap
+# Two Thumbs Up roadmap (formerly Climber)
 
 Ideas captured for later. Nothing here is built yet unless marked done.
 
@@ -41,3 +41,20 @@ Balloons pop when a hand passes through them. Green balloons are power-ups. The 
 ### Parked
 
 - 🧈 Butterfingers (both hands let go). Removed because it was effectively instant death. It could come back with a softer version, e.g. only the lower hand lets go, or a short grace period to re-grab.
+
+## Done: fun, challenge and sharing batch
+
+- Challenge links (`?beat=152&from=Troy`) with a line to beat and a celebration when you pass it.
+- Link preview card (`climber/og.png`) and home-screen icon.
+- Name: Two Thumbs Up.
+- Synthesized sound effects with a mute toggle.
+- Climber personality: worried near the water, grin after a big fling, scream when falling.
+- "Your best" line, landmarks at real heights, city → clouds → dusk → space.
+- Golden checkpoint ledges and a celebration every 100 m.
+- Icy ledges, wind gusts and birds.
+- Collectible stars.
+- Wordle-style emoji summary in the share text.
+
+### Decided against
+
+Bouncy ledges, phone vibration, random funny endings, share image.
