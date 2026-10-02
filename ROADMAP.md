@@ -6,7 +6,7 @@ Ideas captured for later. Nothing here is built yet unless marked done.
 
 **Done (first version):** one run a day, the same level for everyone, reset at midnight Eastern, seeded variations of the normal parameters, streaks (with a 7-day badge), daily share and challenge links, and a start screen that points to other modes once the daily is done.
 
-**Later:** the crazier twists (tiny ledges, moon gravity, mirror day…) as a weekly special or extra modes, never Sprint; archive of past dailies; friend leaderboards (needs a server).
+**Later:** a Playground (or Practice) mode that exposes the tuning sliders, with nothing counting there (today they're a hidden `?tune` developer tool; Daily, Endless and Sprint always use the same settings for everyone); the crazier twists (tiny ledges, moon gravity, mirror day…) as a weekly special or extra modes, never Sprint; archive of past dailies; friend leaderboards (needs a server).
 
 Original notes:
 

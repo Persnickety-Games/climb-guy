@@ -32,7 +32,8 @@ canvas {
   cursor: pointer;
 }
 
-#menu-btn { right: 58px; font-size: 20px; }
+#menu-btn { font-size: 20px; }
+#tune-btn { right: 58px; } /* developer-only (?tune), left of the menu button */
 
 /* Start screen: the game waits, blurred, until the first tap. */
 #start {

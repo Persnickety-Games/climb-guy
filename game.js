@@ -141,10 +141,14 @@
   // start; otherwise features start once you catch on.
   const levelLive = () => state.phase === 'playing' || daily();
 
-  // The ⚙ tuning sliders don't apply to the daily, so everyone plays the same game.
+  // The ⚙ tuning sliders are a hidden developer tool: only with ?tune in the
+  // URL, never in the daily, and runs played with it don't count for anything.
+  // Everyone else always plays with the defaults.
+  const TUNING = new URLSearchParams(location.search).has('tune');
   function applyTuning() {
-    Object.assign(T, DEFAULTS, daily() ? {} : store.get('climber3.tuning', {}));
-    document.getElementById('tune-btn').hidden = daily();
+    const on = TUNING && !daily();
+    Object.assign(T, DEFAULTS, on ? store.get('climber3.tuning', {}) : {});
+    document.getElementById('tune-btn').hidden = !on;
   }
 
   // ---------- Game state ----------
@@ -610,10 +614,11 @@
     const secs = state.time - state.startTime;
     if (m >= 300 && state.runPopped === 0) badge(mainAward('purist'));
     // Endless and Sprint have badges of their own.
-    if (sprint() && m >= 150) badge(Progress.award('speed'));
-    if (sprint() && m >= 250) badge(Progress.award('blur'));
-    if (mode === 'endless' && m >= 500) badge(Progress.award('deepend'));
-    if (mode === 'endless' && m >= 1000) badge(Progress.award('longhaul'));
+    const side = TUNING ? () => null : Progress.award;
+    if (sprint() && m >= 150) badge(side('speed'));
+    if (sprint() && m >= 250) badge(side('blur'));
+    if (mode === 'endless' && m >= 500) badge(side('deepend'));
+    if (mode === 'endless' && m >= 1000) badge(side('longhaul'));
     if (secs >= 480) badge(mainAward('marathon'));
     while (m >= state.nextMilestoneM) {
       celebrate(`${state.nextMilestoneM} m!`, 'Checkpoint');
@@ -1127,7 +1132,9 @@
     state.unit = pickUnit(heightMeters());
     const m = heightMeters();
     state.timeUp = sprint() && climbing && state.water < state.body.y;
-    if (sprint()) {
+    if (TUNING && !daily()) {
+      state.result = { isBest: false, newBadges: [], newUnlocks: [] }; // tuned runs don't count
+    } else if (sprint()) {
       state.result = Progress.recordSprint({ m, unlockedBefore: state.unlockedBefore });
     } else if (!daily()) {
       state.result = Progress.recordEndless({ m, unlockedBefore: state.unlockedBefore });

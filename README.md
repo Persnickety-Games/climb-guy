@@ -34,7 +34,7 @@ The rest of the game (also how Endless plays):
 - Progress (`progress.js`): stats, best height, total climbed, the passport and the main badges and unlocks come only from the daily. Most skins unlock from total meters climbed in dailies or dailies played, a few from one big daily, and the rest from badges. Endless and Sprint are practice modes with their own bests and their own labeled badges, which unlock a few items of their own. Skin art is in `skins.js`.
 - Progress is saved only in the browser (`localStorage`). There's no server or account, so it doesn't follow you to another device or browser.
 
-The ⚙ button has live tuning sliders, saved in your browser (not used in the daily).
+Developer tuning: add `?tune` to an Endless or Sprint link (e.g. `?mode=endless&tune`) to get the ⚙ button with live tuning sliders, saved in your browser. Runs played with it don't count for anything, and players without `?tune` always get the defaults.
 
 ## Run locally
 
