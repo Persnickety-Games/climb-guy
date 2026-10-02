@@ -45,7 +45,7 @@ Balloons pop when a hand passes through them. Green balloons are power-ups. The 
 ## Done: fun, challenge and sharing batch
 
 - Challenge links (`?beat=152&from=Troy`) with a line to beat and a celebration when you pass it.
-- Link preview card (`climber/og.png`) and home-screen icon.
+- Link preview card (`two-thumbs-up/og.png`) and home-screen icon.
 - Name: Two Thumbs Up.
 - Synthesized sound effects with a mute toggle.
 - Climber personality: worried near the water, grin after a big fling, scream when falling.

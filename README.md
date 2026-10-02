@@ -4,7 +4,7 @@ Simple browser games for mobile and desktop. Plain HTML/CSS/JS with no build ste
 
 ## Games
 
-- **Two Thumbs Up** (`climber/`, mobile; originally "Climber"): two thumbs, two hands. The left half of the screen controls the left hand and the right half controls the right.
+- **Two Thumbs Up** (`two-thumbs-up/`, mobile; originally "Climber"): two thumbs, two hands. The left half of the screen controls the left hand and the right half controls the right.
   - Drag down and release to throw a free hand.
   - Tap while the hand is over a ledge to grab it, and keep your thumb down to hold on. Lift it and the hand lets go.
   - Arms are elastic: let go with the lower hand and the upper arm flings you up. A held hand limits how far the other can reach.
@@ -15,10 +15,12 @@ Simple browser games for mobile and desktop. Plain HTML/CSS/JS with no build ste
   - Stars to collect sit off the safe route. Icy ledges (from 225–250 m) slowly slide you off; wind gusts (from 275–300 m) push thrown hands; birds (from 325–350 m) knock thrown hands away. Test from the start with `?icy`, `?wind` or `?birds`.
   - Sound effects are made in code (Web Audio). 🔊 toggles mute.
   - Sharing adds `?beat=<height>&from=<name>` to the link; a friend who opens it gets a line to beat and a celebration when they pass it. The share text ends with a Wordle-style summary of the run.
-  - Game over shows your height in a random absurd unit (about 300 of them in `climber/units.js`, never repeating your last 30; 🎲 picks another) and a Share button: the phone's share sheet, or copy to clipboard elsewhere.
-- **Two Thumbs Up Classic** (`climber-classic/`): the original one-finger version. Drag to slingshot, and the hand auto-grabs near the top of its arc.
+  - Game over shows your height in a random absurd unit (about 300 of them in `two-thumbs-up/units.js`, never repeating your last 30; 🎲 picks another) and a Share button: the phone's share sheet, or copy to clipboard elsewhere.
+- **Two Thumbs Up Classic** (`two-thumbs-up-classic/`): the original one-finger version. Drag to slingshot, and the hand auto-grabs near the top of its arc.
 
 Both have a ⚙ button with live tuning sliders, saved in your browser.
+
+`climber/` and `climber-classic/` just forward to the new addresses.
 
 ## Run locally
 

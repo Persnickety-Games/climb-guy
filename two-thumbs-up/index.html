@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1d2e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Two Thumbs Up</title>
+  <meta name="description" content="Two thumbs, two hands. Climb as high as you can before the water gets you.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Two Thumbs Up 👍👍">
+  <meta property="og:description" content="Two thumbs, two hands. Climb as high as you can before the water gets you. Can you beat my height?">
+  <meta property="og:url" content="https://troyskinner3.github.io/arcade/two-thumbs-up/">
+  <meta property="og:image" content="https://troyskinner3.github.io/arcade/two-thumbs-up/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="apple-touch-icon" href="icon.png">
+  <script>
+    // Load the game files with a version stamp so phones never keep running an
+    // old cached copy after an update (at most a minute old).
+    window.CLIMBER_V = Math.floor(Date.now() / 60000);
+    document.write('<link rel="stylesheet" href="style.css?v=' + window.CLIMBER_V + '">');
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <button id="mute-btn" aria-label="Sound on or off">🔊</button>
+  <button id="tune-btn" aria-label="Tuning">⚙</button>
+  <div id="tune" hidden>
+    <h2>Tuning</h2>
+    <div id="tune-fields"></div>
+    <div class="tune-actions">
+      <button id="tune-reset">Reset defaults</button>
+      <button id="tune-close">Close</button>
+    </div>
+  </div>
+
+  <div id="over-actions" hidden>
+    <button id="share-btn">Share</button>
+    <button id="reroll-btn" aria-label="Try a different unit">🎲</button>
+    <input id="name-input" maxlength="20" autocomplete="nickname" placeholder="Your name (for challenge links)">
+    <div id="share-status" aria-live="polite"></div>
+  </div>
+
+  <script>
+    document.write('<script src="sfx.js?v=' + window.CLIMBER_V + '"><\/script>' +
+                   '<script src="units.js?v=' + window.CLIMBER_V + '"><\/script>' +
+                   '<script src="game.js?v=' + window.CLIMBER_V + '"><\/script>');
+  </script>
+</body>
+</html>
