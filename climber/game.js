@@ -1196,7 +1196,7 @@
 
   function pickUnit(meters) {
     const units = window.CLIMBER_UNITS || [];
-    if (!units.length) return null;
+    if (!units.length || meters <= 0) return null; // "0 Petronas Towers" helps no one
     const fits = units.filter(([, , h]) => meters / h >= 1.5 && meters / h <= 50000);
     const recent = store.get('climber.recentUnits', []);
     const fresh = fits.filter(([one]) => !recent.includes(one));
@@ -1222,7 +1222,7 @@
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const url = location.origin + location.pathname;
     const u = state.unit;
-    const units = u ? ` That's ${unitPhrase(u)}. How many ${u.many} could you climb?` : '';
+    const units = u ? ` That's ${unitPhrase(u)}. How many ${u.many} could you climb?` : ' Think you can do better?';
     return `I climbed ${m} meters before my demise on ${date}.${units} 🧗 ${url}`;
   }
 
