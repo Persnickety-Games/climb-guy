@@ -479,10 +479,18 @@
   // Real things you climb past, at their real heights.
   const LANDMARKS = [
     [5.5, '🦒', 'a giraffe'], [12, '🦕', 'a Brachiosaurus'], [21, '🎈', 'a hot air balloon'],
-    [46, '🗽', 'the Statue of Liberty'], [84, '🌲', 'the biggest tree on Earth'], [96, '🕰️', 'Big Ben'],
-    [108, '🦖', 'Godzilla'], [139, '🔺', 'the Great Pyramid'], [269, '🚢', 'the Titanic (on end)'],
-    [330, '🗼', 'the Eiffel Tower'], [381, '🏙️', 'the Empire State Building'],
-    [541, '🏢', 'One World Trade Center'], [828, '🌆', 'the Burj Khalifa'], [979, '💧', 'Angel Falls'],
+    [46, '🗽', 'the Statue of Liberty'], [108, '🦖', 'Godzilla'], [139, '🔺', 'the Great Pyramid'],
+    [184, '🛸', 'the Space Needle'], [227, '🌉', 'the Golden Gate Bridge towers'], [269, '🚢', 'the Titanic (on end)'],
+    [330, '🗼', 'the Eiffel Tower'], [381, '🏙️', 'the Empire State Building'], [442, '🏢', 'the Willis Tower'],
+    [508, '🎋', 'Taipei 101'], [553, '🍁', 'the CN Tower'], [604, '🪨', 'Pulpit Rock (Norway)'],
+    [679, '🌴', 'Merdeka 118'], [739, '💦', 'Yosemite Falls'], [828, '🌆', 'the Burj Khalifa'],
+    [914, '🧗', 'El Capitan'], [979, '💧', 'Angel Falls'],
+    [1085, '⛰️', 'Table Mountain'], [1250, '⚡', "Mount Thor's sheer cliff"], [1345, '🏔️', 'Ben Nevis'],
+    [1444, '🌓', 'Half Dome'],
+    // Far-off goals.
+    [3776, '🗻', 'Mount Fuji'], [4000, '🪂', 'a skydiving jump'], [4478, '🏔️', 'the Matterhorn'],
+    [5895, '🦁', 'Kilimanjaro'], [8849, '🚩', 'Mount Everest'], [10700, '✈️', 'a plane at cruising altitude'],
+    [100000, '🌌', 'the edge of space'], [408000, '🛰️', 'the ISS'],
   ];
 
   function celebrate(text, sub, small = false) {
