@@ -73,10 +73,13 @@
   const ctx = canvas.getContext('2d');
   let cssW = 0, cssH = 0, dpr = 1, scale = 1, ox = 0, viewH = 0;
 
+  // Measure the canvas as laid out. Called on resize events and also checked
+  // every frame, since a share sheet or tab switch can change the size without
+  // a resize event when you come back.
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 3);
-    cssW = window.innerWidth;
-    cssH = window.innerHeight;
+    cssW = canvas.clientWidth || window.innerWidth;
+    cssH = canvas.clientHeight || window.innerHeight;
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
     scale = Math.min(cssW / WORLD_W, cssH / 560);
@@ -84,7 +87,15 @@
     viewH = cssH / scale;
   }
   window.addEventListener('resize', resize);
+  window.addEventListener('pageshow', resize);
+  document.addEventListener('visibilitychange', resize);
+  window.visualViewport?.addEventListener('resize', resize);
   resize();
+
+  function checkSize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (w && h && (w !== cssW || h !== cssH || Math.min(window.devicePixelRatio || 1, 3) !== dpr)) resize();
+  }
 
   // ---------- Helpers ----------
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -1463,13 +1474,27 @@
     const lx = fly ? fly.x - body.x : 0, ly = fly ? fly.y - body.y : 1;
     const ll = Math.hypot(lx, ly) || 1;
     const falling = !hands.some(h => h.state === 'held');
+    const inPain = (hurt(LEFT) || hurt(RIGHT)) && !(state.screamed && falling);
     for (const ex of [-6, 6]) {
+      if (inPain) {
+        // Eyes squeezed shut: > <
+        const d = ex < 0 ? 1 : -1;
+        ctx.strokeStyle = '#1b1b1b';
+        ctx.lineWidth = 1.8;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(body.x + ex - 3 * d, body.y + 7);
+        ctx.lineTo(body.x + ex + 3 * d, body.y + 4);
+        ctx.lineTo(body.x + ex - 3 * d, body.y + 1);
+        ctx.stroke();
+        continue;
+      }
       ctx.fillStyle = '#fff';
       ctx.beginPath(); ctx.arc(body.x + ex, body.y + 4, falling ? 5.5 : 4.5, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#1b1b1b';
       ctx.beginPath(); ctx.arc(body.x + ex + (lx / ll) * 2, body.y + 4 + (ly / ll) * 2, 2.2, 0, Math.PI * 2); ctx.fill();
     }
-    drawFace(body, falling);
+    drawFace(body, falling, inPain);
 
     hands.forEach((h, i) => {
       ctx.fillStyle = SIDE_COLOR[i];
@@ -1492,8 +1517,23 @@
   }
 
   // Mood: screaming when falling, a grin after a big fling, worried near the water.
-  function drawFace(body, falling) {
+  function drawFace(body, falling, inPain) {
     const bx = body.x, by = body.y;
+    if (inPain) {
+      // Grimace: clenched teeth, with a little shake.
+      const jx = Math.sin(state.time * 50) * 0.6;
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#3a1a10';
+      ctx.lineWidth = 1.4;
+      roundRect(bx - 7 + jx, by - 10, 14, 6, 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(bx - 7 + jx, by - 7); ctx.lineTo(bx + 7 + jx, by - 7);
+      for (const tx of [-3.5, 0, 3.5]) { ctx.moveTo(bx + tx + jx, by - 10); ctx.lineTo(bx + tx + jx, by - 4); }
+      ctx.stroke();
+      return;
+    }
     const screaming = state.screamed && falling && state.phase !== 'ready';
     const grinning = state.time < state.grinUntil;
     const worried = state.phase === 'playing' && body.y - state.water < 220;
@@ -1838,6 +1878,7 @@
       state.holds = state.holds.filter(h => h.y > state.water - 300);
       state.balloons = state.balloons.filter(b => b.y > state.water - 100 && !(b.popped && state.time - b.popped > 0.4));
     }
+    checkSize();
     render();
     syncOverlay();
     requestAnimationFrame(frame);
