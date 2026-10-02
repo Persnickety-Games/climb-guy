@@ -125,6 +125,7 @@
       cam,
       baseY: START_Y,          // height 0 m; set to wherever you first catch on
       maxY: START_Y,
+      badFromM: rand(...BAD_FROM_M), // where power-downs start this run
       best: store.get('climber2.best', 0),
       newBest: false,
     };
@@ -234,7 +235,8 @@
   const EARLY = new URLSearchParams(location.search).has('powerups');
   const GOOD_FROM_M = EARLY ? 0 : 50;    // power-ups start appearing here
   const FIRST_BALLOON_M = [50, 75];      // and the first one is guaranteed somewhere in this range
-  const BAD_FROM_M = EARLY ? 5 : 300;    // power-downs join in here
+  const BAD_FROM_M = EARLY ? [5, 5] : [140, 160]; // power-downs start somewhere in this range,
+                                                  // with the first one guaranteed there
   const BALLOON_CHANCE = EARLY ? 0.5 : 0.15; // per row of ledges
   const BALLOON_R = 18;
   const EFFECT_SECS = 10;
@@ -257,21 +259,22 @@
   function maybeSpawnBalloon(rowY) {
     const m = (rowY - state.baseY) / UNITS_PER_METER;
     if (m < GOOD_FROM_M || Math.random() > BALLOON_CHANCE) return;
-    const pool = Object.entries(POWERS).filter(([, p]) => p.good || m >= BAD_FROM_M);
+    const pool = Object.entries(POWERS).filter(([, p]) => p.good || m >= state.badFromM);
     let r = Math.random() * pool.reduce((sum, [, p]) => sum + p.weight, 0);
     const [kind] = pool.find(([, p]) => (r -= p.weight) < 0) || pool[0];
     state.balloons.push({ kind, x: rand(40, WORLD_W - 40), y: rowY + rand(40, 70), phase: rand(0, 6.3), popped: 0 });
   }
 
-  // Guarantee one power-up early so every climber gets to meet them.
+  // Guarantee one early power-up, and one power-down where they begin,
+  // so every climber gets to meet both.
   function placeFirstBalloon() {
     if (EARLY) return;
-    const m = rand(FIRST_BALLOON_M[0], FIRST_BALLOON_M[1]);
-    const good = Object.keys(POWERS).filter(k => POWERS[k].good && k !== 'rocket');
-    state.balloons.push({
-      kind: good[(Math.random() * good.length) | 0],
-      x: rand(60, WORLD_W - 60), y: state.baseY + m * UNITS_PER_METER, phase: rand(0, 6.3), popped: 0,
+    const pick = (keys) => keys[(Math.random() * keys.length) | 0];
+    const place = (kind, m) => state.balloons.push({
+      kind, x: rand(60, WORLD_W - 60), y: state.baseY + m * UNITS_PER_METER, phase: rand(0, 6.3), popped: 0,
     });
+    place(pick(Object.keys(POWERS).filter(k => POWERS[k].good && k !== 'rocket')), rand(...FIRST_BALLOON_M));
+    place(pick(Object.keys(POWERS).filter(k => !POWERS[k].good)), state.badFromM);
   }
 
   // Balloons bob gently.
