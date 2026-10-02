@@ -58,7 +58,11 @@ window.Progress = (() => {
   const UNLOCKS = {
     body: { green: { best: 25 }, purple: { best: 50 }, red: { badge: 'fling' }, gold: { best: 500 }, stripes: { badge: 'dedicated' }, polka: { badge: 'balloons' } },
     hat: { party: { badge: 'first' }, bucket: { best: 75 }, cowboy: { badge: 'freefall' }, propeller: { best: 150 }, tophat: { badge: 'clutch' }, crown: { best: 250 }, astronaut: { best: 400 } },
-    face: { sunglasses: { best: 100 }, mustache: { badge: 'birdbrain' }, monocle: { badge: 'fooled' } },
+    face: {
+      freckles: { best: 15 }, clown: { best: 40 }, sunglasses: { best: 100 }, roundspecs: { best: 125 }, scar: { best: 175 },
+      eyepatch: { best: 225 }, warpaint: { best: 350 }, mustache: { badge: 'birdbrain' }, monocle: { badge: 'fooled' },
+      disguise: { badge: 'regular' }, glasses3d: { badge: 'km1' }, hearts: { badge: 'streak7' }, beard: { badge: 'km10' },
+    },
     color: { orange: { best: 25 }, purple: { best: 75 }, red: { badge: 'speed' }, black: { badge: 'splash' }, gold: { best: 500 }, rainbow: { best: 300 } },
     backdrop: { sunset: { best: 50 }, night: { best: 100 }, forest: { badge: 'purist' }, candy: { badge: 'allpowers' }, synthwave: { best: 750 } },
     ledges: { wood: { best: 35 }, stone: { best: 150 }, candy: { badge: 'rocket' }, neon: { best: 200 }, gold: { best: 1000 } },
