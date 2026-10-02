@@ -14,10 +14,11 @@
 
   // ---------- Tuning (editable live via the ⚙ panel) ----------
   const DEFAULTS = {
-    launchPower: 950,   // hand throw speed at full drag
-    maxDrag: 150,       // drag distance (world units) for full power
+    launchPower: 1700,  // hand throw speed at full drag (enough to cross the whole screen)
+    maxDrag: 200,       // drag distance (world units) for full power
     handGravity: 1500,  // gravity on a thrown hand
-    armReach: 250,      // max arm length — a held hand limits how far you can go
+    armReach: 900,      // max arm length — a held hand limits how far you can go
+    maxPull: 9000,      // cap on a stretched arm's pull, so long grabs zip rather than explode
     armStiffness: 38,   // how hard a stretched arm yanks the body
     armDamping: 2.5,    // how quickly the yank settles
     armRest: 34,        // relaxed arm length
@@ -28,10 +29,11 @@
   };
 
   const FIELDS = [
-    ['launchPower', 'Throw power', 400, 1600, 10],
-    ['maxDrag', 'Drag for full power', 60, 300, 5],
+    ['launchPower', 'Throw power', 400, 2600, 10],
+    ['maxDrag', 'Drag for full power', 60, 400, 5],
     ['handGravity', 'Hand gravity', 500, 3000, 50],
-    ['armReach', 'Arm reach', 120, 400, 5],
+    ['armReach', 'Arm reach', 120, 1400, 10],
+    ['maxPull', 'Arm max pull', 2000, 30000, 250],
     ['armStiffness', 'Arm springiness', 5, 120, 1],
     ['armDamping', 'Arm damping', 0, 10, 0.1],
     ['armRest', 'Arm length (relaxed)', 15, 80, 1],
@@ -46,7 +48,7 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
 
-  const T = Object.assign({}, DEFAULTS, store.get('climber2.tuning', {}));
+  const T = Object.assign({}, DEFAULTS, store.get('climber3.tuning', {}));
 
   // ---------- Constants ----------
   const WORLD_W = 400;
@@ -59,7 +61,7 @@
   const DT = 1 / 120;
   const DRAG_START_PX = 12;  // thumb movement that turns a tap into a throw
   const LEFT = 0, RIGHT = 1;
-  const SIDE_COLOR = ['#5ec8f2', '#ffd166'];
+  const SIDE_COLOR = ['#ff5fa8', '#ffd166']; // left: pink (reads well on the blue sky), right: yellow
 
   // ---------- Canvas ----------
   const canvas = document.getElementById('game');
@@ -161,7 +163,7 @@
   const HOLD_COLORS = ['#6b5440', '#5a6b48', '#4f5d73', '#7a5a5a', '#5e5470'];
 
   function generateHolds() {
-    while (state.holdsTop < state.cam + viewH + 400) {
+    while (state.holdsTop < state.cam + viewH + T.armReach + 200) {
       const d = clamp(state.holdsTop / 8000, 0, 1); // difficulty 0..1
       const y = state.holdsTop + lerp(85, 155, d) * rand(0.75, 1.25);
       spawnRow(y, d);
@@ -318,7 +320,7 @@
 
   // The hand is done once it falls back below where it was thrown from.
   function handFlightOver(h) {
-    return (h.vy < 0 && h.y < h.launchY - 10) || h.t > 2.5;
+    return (h.vy < 0 && h.y < h.launchY - 10) || h.t > 5;
   }
 
   function step(dt) {
@@ -334,7 +336,7 @@
       if (dist <= T.armRest) return;
       const nx = dx / dist, ny = dy / dist;
       const radialV = body.vx * nx + body.vy * ny;
-      const f = T.armStiffness * (dist - T.armRest) - T.armDamping * radialV * 3;
+      const f = Math.min(T.armStiffness * (dist - T.armRest), T.maxPull) - T.armDamping * radialV * 3;
       ax += nx * f;
       ay += ny * f;
     });
@@ -477,6 +479,7 @@
     drawWater();
 
     screenTransform();
+    drawOffscreenHands();
     drawThumbs();
     drawHud();
   }
@@ -491,11 +494,11 @@
       const s = shoulder(i);
       const h = { x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y };
       ctx.fillStyle = SIDE_COLOR[i];
-      ctx.globalAlpha = 0.45;
-      for (let n = 0; n < 300 && !handFlightOver(h); n++) {
+      ctx.globalAlpha = 0.8;
+      for (let n = 0; n < 600 && !handFlightOver(h); n++) {
         advanceHand(h, s, DT);
         if (n % 7) continue;
-        ctx.beginPath(); ctx.arc(h.x, h.y, 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(h.x, h.y, 2.8, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
     });
@@ -552,6 +555,25 @@
     ctx.lineTo(WORLD_W + 500, bottom);
     ctx.closePath();
     ctx.fill();
+  }
+
+  // A hand thrown above the screen shows as an arrow on the top edge.
+  function drawOffscreenHands() {
+    state.hands.forEach((h, i) => {
+      const sy = cssH - (h.y - state.cam) * scale;
+      if (sy > -HAND_R * scale) return;
+      const sx = ox + h.x * scale;
+      const above = Math.min(1, -sy / (viewH * scale)); // fades as it goes further
+      ctx.fillStyle = SIDE_COLOR[i];
+      ctx.globalAlpha = 1 - above * 0.6;
+      ctx.beginPath();
+      ctx.moveTo(sx, 6);
+      ctx.lineTo(sx - 9, 22);
+      ctx.lineTo(sx + 9, 22);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
   }
 
   // Show where each thumb is and what it's doing.
@@ -662,7 +684,7 @@
       input.addEventListener('input', () => {
         T[key] = parseFloat(input.value);
         val.textContent = T[key];
-        store.set('climber2.tuning', T);
+        store.set('climber3.tuning', T);
       });
       tuneFields.append(wrap, input);
     }
@@ -675,7 +697,7 @@
   document.getElementById('tune-close').addEventListener('click', () => { tunePanel.hidden = true; });
   document.getElementById('tune-reset').addEventListener('click', () => {
     Object.assign(T, DEFAULTS);
-    store.set('climber2.tuning', T);
+    store.set('climber3.tuning', T);
     buildTuning();
   });
 
