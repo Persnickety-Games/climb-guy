@@ -26,7 +26,7 @@ Ideas captured for later. Nothing here is built yet unless marked done.
 
 ## Power-ups (done)
 
-Balloons pop when a hand passes through them. Green balloons are power-ups and appear from 100 m. Red balloons are power-downs and join from 300 m. Add `?powerups` to the URL to get balloons from the start for testing.
+Balloons pop when a hand passes through them. Green balloons are power-ups and appear from 50 m, with one guaranteed between 50 and 75 m. Red balloons are power-downs and join from 300 m. Add `?powerups` to the URL to get balloons from the start for testing.
 
 | Balloon | Effect |
 | --- | --- |

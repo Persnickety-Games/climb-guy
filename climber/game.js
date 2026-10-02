@@ -155,6 +155,7 @@
     if (state.phase !== 'ready') return;
     state.phase = 'playing';
     state.baseY = state.maxY = state.body.y;
+    placeFirstBalloon();
   }
 
   function letGo(i) {
@@ -231,7 +232,8 @@
 
   // ---------- Power-ups ----------
   const EARLY = new URLSearchParams(location.search).has('powerups');
-  const GOOD_FROM_M = EARLY ? 0 : 100;   // power-ups start appearing here
+  const GOOD_FROM_M = EARLY ? 0 : 50;    // power-ups start appearing here
+  const FIRST_BALLOON_M = [50, 75];      // and the first one is guaranteed somewhere in this range
   const BAD_FROM_M = EARLY ? 5 : 300;    // power-downs join in here
   const BALLOON_CHANCE = EARLY ? 0.5 : 0.15; // per row of ledges
   const BALLOON_R = 18;
@@ -259,6 +261,17 @@
     let r = Math.random() * pool.reduce((sum, [, p]) => sum + p.weight, 0);
     const [kind] = pool.find(([, p]) => (r -= p.weight) < 0) || pool[0];
     state.balloons.push({ kind, x: rand(40, WORLD_W - 40), y: rowY + rand(40, 70), phase: rand(0, 6.3), popped: 0 });
+  }
+
+  // Guarantee one power-up early so every climber gets to meet them.
+  function placeFirstBalloon() {
+    if (EARLY) return;
+    const m = rand(FIRST_BALLOON_M[0], FIRST_BALLOON_M[1]);
+    const good = Object.keys(POWERS).filter(k => POWERS[k].good && k !== 'rocket');
+    state.balloons.push({
+      kind: good[(Math.random() * good.length) | 0],
+      x: rand(60, WORLD_W - 60), y: state.baseY + m * UNITS_PER_METER, phase: rand(0, 6.3), popped: 0,
+    });
   }
 
   // Balloons bob gently.
