@@ -17,7 +17,23 @@ window.sfx = (() => {
       master.gain.value = muted ? 0 : 0.5;
       master.connect(ctx.destination);
     }
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state !== 'running') {
+      ctx.resume();
+      // Older iPhones only unlock audio once something actually plays inside
+      // the tap, so play one silent sample.
+      try {
+        const src = ctx.createBufferSource();
+        src.buffer = ctx.createBuffer(1, 1, 22050);
+        src.connect(ctx.destination);
+        src.start(0);
+      } catch {}
+    }
+  }
+
+  // iPhones count a tap's end (not its start) as permission to play sound, so
+  // try on every kind of tap until audio is running.
+  for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+    document.addEventListener(type, () => { if (!ctx || ctx.state !== 'running') unlock(); }, { capture: true, passive: true });
   }
 
   function setMuted(m) {
@@ -75,6 +91,7 @@ window.sfx = (() => {
   return {
     unlock,
     get muted() { return muted; },
+    get state() { return ctx ? ctx.state : 'not started'; }, // for debugging
     setMuted,
     throw: () => noise(0.14, 900, 3200, 0.25, 'bandpass', 2),          // thwip
     grab: () => { tone(160, 70, 0.08, 'triangle', 0.4); noise(0.04, 2000, 800, 0.15); }, // slap
