@@ -31,7 +31,7 @@ The rest of the game (also how Endless plays):
   - **Badges:** 23 badges.
   - **Customize:** equip unlocked bodies, hats, faces, hand and arc colors (each hand and each arc set separately), backdrops, ledge styles and water.
   - **Modes:** Daily (shows today's result once played), Endless, and side modes. **Sprint** is 60 seconds with no rising water and no balloons; it has its own best, its share links add `mode=sprint`, and it doesn't count toward stats. **Classic** opens the one-finger version. Add `?mode=sprint` to the URL to start in Sprint.
-- Skins unlock at new best heights and with badges (`progress.js`); their art is in `skins.js`. Game over shows new badges, unlocks and the next unlock.
+- Progress (`progress.js`): stats, best height, total climbed, the passport and the main badges and unlocks come only from the daily. Most skins unlock from total meters climbed in dailies or dailies played, a few from one big daily, and the rest from badges. Endless and Sprint are practice modes with their own bests and their own labeled badges, which unlock a few items of their own. Skin art is in `skins.js`.
 - Progress is saved only in the browser (`localStorage`). There's no server or account, so it doesn't follow you to another device or browser.
 
 The ⚙ button has live tuning sliders, saved in your browser (not used in the daily).

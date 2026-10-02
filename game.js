@@ -128,7 +128,10 @@
   let mode = URL_MODE === 'sprint' || URL_MODE === 'endless' ? URL_MODE : 'daily';
   const sprint = () => mode === 'sprint';
   const daily = () => mode === 'daily';
-  const modeBest = () => (sprint() ? Progress.sprintBest : Progress.best);
+  const modeBest = () => (sprint() ? Progress.sprintBest : daily() ? Progress.best : Progress.endlessBest);
+  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ' };
+  // The main badges, stats and landmarks come only from the daily.
+  const mainAward = (id) => (daily() ? Progress.award(id) : null);
   let day = Daily.today();         // the daily being played; refreshed at each new game
   let R = Daily.streams(null);     // random streams for the level (seeded in the daily)
   const NO_DAY = { rowGap: 1, ledgeW: 1, pairs: 1, balloonGap: 1, featureGap: 1, water: 1 };
@@ -238,7 +241,7 @@
     }
     state.maxY = state.body.y;
     state.startTime = state.time;
-    badge(Progress.award('first'));
+    badge(mainAward('first'));
   }
 
   // Where each feature first appears (in meters). The ?powerups-style test
@@ -532,7 +535,7 @@
         if (!b.hitAt || state.time - b.hitAt > 0.5) {
           b.hitAt = state.time;
           sfx.bird();
-          badge(Progress.noteBirdHit());
+          if (daily()) badge(Progress.noteBirdHit());
           burstConfetti(ox + b.x * scale, cssH - (b.y - state.cam) * scale, 10, ['#ddd', '#999', '#fff']);
         }
       }
@@ -566,7 +569,7 @@
     for (const x of [].concat(b || [])) {
       if (!x) continue;
       state.runBadges.push(x);
-      celebrate(`${x.icon} Badge: ${x.name}!`, '', true);
+      celebrate(`${x.icon} ${x.mode ? `${Progress.MODE_NAME[x.mode]} badge` : 'Badge'}: ${x.name}!`, '', true);
     }
   }
 
@@ -596,18 +599,22 @@
     }
     const m = climbedM();
     while (state.landmarkIdx < LANDMARKS.length && m >= LANDMARKS[state.landmarkIdx][0]) {
-      Progress.noteLandmark(state.landmarkIdx);
+      if (daily()) Progress.noteLandmark(state.landmarkIdx);
       const [, icon, name] = LANDMARKS[state.landmarkIdx++];
       celebrate(`${icon} Higher than ${name}!`, '', true);
     }
     if (Math.floor(m) > state.lastHeightM) {
       state.lastHeightM = Math.floor(m);
-      badge(Progress.noteHeight(state.lastHeightM));
+      if (daily()) badge(Progress.noteHeight(state.lastHeightM));
     }
     const secs = state.time - state.startTime;
-    if (m >= 300 && state.runPopped === 0) badge(Progress.award('purist'));
-    if (m >= 150 && sprint()) badge(Progress.award('speed'));
-    if (secs >= 480) badge(Progress.award('marathon'));
+    if (m >= 300 && state.runPopped === 0) badge(mainAward('purist'));
+    // Endless and Sprint have badges of their own.
+    if (sprint() && m >= 150) badge(Progress.award('speed'));
+    if (sprint() && m >= 250) badge(Progress.award('blur'));
+    if (mode === 'endless' && m >= 500) badge(Progress.award('deepend'));
+    if (mode === 'endless' && m >= 1000) badge(Progress.award('longhaul'));
+    if (secs >= 480) badge(mainAward('marathon'));
     while (m >= state.nextMilestoneM) {
       celebrate(`${state.nextMilestoneM} m!`, 'Checkpoint');
       sfx.milestone();
@@ -636,7 +643,7 @@
       sfx.fling();
     } else if (state.flinging && body.vy < 200) {
       state.flinging = false;
-      if (state.phase === 'playing' && body.y - state.flingFromY >= 30 * UNITS_PER_METER) badge(Progress.award('fling'));
+      if (state.phase === 'playing' && body.y - state.flingFromY >= 30 * UNITS_PER_METER) badge(mainAward('fling'));
     }
     if (holding) state.screamed = false;
     else if (state.phase === 'playing' && !state.dropping && !state.rocket) state.fallTop = Math.max(state.fallTop ?? body.y, body.y);
@@ -719,8 +726,8 @@
     if (!POWERS[kind]) return;
     state.toast = { kind, at: state.time };
     state.runPopped++;
-    badge(Progress.notePop(kind));
-    if (kind === 'ouch' && hurt(1 - hand)) badge(Progress.award('doubleouch'));
+    if (daily()) badge(Progress.notePop(kind));
+    if (kind === 'ouch' && hurt(1 - hand)) badge(mainAward('doubleouch'));
     sfx.pop();
     (POWERS[kind].good ? sfx.good : sfx.bad)();
     if (kind === 'rocket') startRocket();
@@ -868,7 +875,7 @@
     // During Auto-grab, taps only throw a resting hand, so a stray tap can't
     // grab with it (which would make the other hand let go).
     const hold = hurt(i) || (autoGrab && atShoulder) ? null : holdUnder(h);
-    if (!hold && state.holds.some(o => o.ghost && circleHitsRect(h.x, h.y, HAND_R, o))) badge(Progress.award('fooled'));
+    if (!hold && state.holds.some(o => o.ghost && circleHitsRect(h.x, h.y, HAND_R, o))) badge(mainAward('fooled'));
     if (hold) {
       // Tap to grab: only works if the hand is over a ledge right now.
       grab(i, hold);
@@ -929,7 +936,7 @@
     h.slideDir = 0;
     h.slideV = 0;
     sfx.grab();
-    if (state.fallTop != null && state.fallTop - state.body.y >= 20 * UNITS_PER_METER) badge(Progress.award('freefall'));
+    if (state.fallTop != null && state.fallTop - state.body.y >= 20 * UNITS_PER_METER) badge(mainAward('freefall'));
     state.fallTop = null;
     // Auto-grab: holding is automatic, and the other hand lets go once this one
     // has hold of something new. A hand left auto-held after the timer ends also
@@ -1094,7 +1101,7 @@
       // Clutch: the water got within 1 m, then you climbed 10 m clear of that spot.
       if (state.body.y - state.water < UNITS_PER_METER) state.clutchY = state.body.y;
       else if (state.clutchY != null && state.body.y - state.clutchY >= 10 * UNITS_PER_METER) {
-        badge(Progress.award('clutch'));
+        badge(mainAward('clutch'));
         state.clutchY = null;
       }
     }
@@ -1122,10 +1129,12 @@
     state.timeUp = sprint() && climbing && state.water < state.body.y;
     if (sprint()) {
       state.result = Progress.recordSprint({ m, unlockedBefore: state.unlockedBefore });
+    } else if (!daily()) {
+      state.result = Progress.recordEndless({ m, unlockedBefore: state.unlockedBefore });
     } else {
       state.result = Progress.recordRun({
         m, secs: climbing ? state.time - state.startTime : 0, splash: climbing && m < 5,
-        unlockedBefore: state.unlockedBefore, daily: daily() ? day : null,
+        unlockedBefore: state.unlockedBefore, daily: day,
       });
       store.set('climber2.best', Progress.best);
     }
@@ -1850,7 +1859,7 @@
     ctx.fillText(mText, ox + 14, top + 26);
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText(`${sprint() ? 'Sprint best' : 'Best'} ${state.best} m`, ox + 14, top + 46);
+    ctx.fillText(`${MODE_LABEL[mode]}${daily() ? 'Best' : 'best'} ${state.best} m`, ox + 14, top + 46);
     if (sprint()) drawSprintClock(top);
     if (daily()) {
       ctx.textAlign = 'center';
@@ -1899,7 +1908,7 @@
         ctx.fillStyle = '#ffd27a';
         ctx.fillText(`Daily #${day.n}${streak >= 2 ? ` · 🔥 ${streak}-day streak` : ''}${state.newBest ? ' · New best!' : ''}`, cx, y0 + 68);
       } else {
-        ctx.fillText(state.newBest ? (sprint() ? 'New Sprint best!' : 'New best!') : `${sprint() ? 'Sprint best' : 'Best'} ${state.best} m`, cx, y0 + 68);
+        ctx.fillText(state.newBest ? `New ${MODE_LABEL[mode]}best!` : `${MODE_LABEL[mode]}best ${state.best} m`, cx, y0 + 68);
       }
       if (state.unit) {
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
@@ -1919,13 +1928,13 @@
       const newBadges = [...state.runBadges, ...(state.result ? state.result.newBadges : [])].filter(b => !seen.has(b.id) && seen.add(b.id));
       const maxW = Math.min(cssW - 32, WORLD_W * scale - 16);
       ctx.font = 'bold 14px system-ui, sans-serif';
-      if (newBadges.length) lines.push(...listLines(`🏅 New badge${newBadges.length > 1 ? 's' : ''}: `, newBadges.map(b => b.name), maxW).map(t => [t, '#ffd166']));
+      if (newBadges.length) lines.push(...listLines(`🏅 New ${daily() ? '' : MODE_LABEL[mode]}badge${newBadges.length > 1 ? 's' : ''}: `, newBadges.map(b => b.name), maxW).map(t => [t, '#ffd166']));
       if (state.result && state.result.newUnlocks.length) {
         lines.push(...listLines('🔓 Unlocked: ', state.result.newUnlocks, maxW).map(t => [t, '#7dffb0']));
         lines.push(['Equip them with 🎨 Customize', 'rgba(255,255,255,0.75)']);
       }
       const next = Progress.nextUnlock();
-      if (next && !sprint()) lines.push([next.text, 'rgba(255,255,255,0.75)']);
+      if (next && daily()) lines.push([next.text, 'rgba(255,255,255,0.75)']);
       let ly = y0 + 300;
       for (const [text, color] of lines) {
         ctx.fillStyle = color;

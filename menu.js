@@ -54,26 +54,27 @@ window.Menu = (() => {
       t.append(el('div', 'tile-value', value), el('div', 'tile-label', label));
       tiles.append(t);
     };
-    tile('Best height', `${fmtNum(s.best)} m`);
-    tile('Runs played', fmtNum(s.totalRuns));
+    body.append(el('p', 'muted', 'Your dailies. Endless and Sprint have their own bests in Modes.'));
+    tile('Best daily', `${fmtNum(s.best)} m`);
+    tile('Dailies played', fmtNum(s.totalRuns));
     tile('Average (last 10)', `${fmtNum(s.avg10)} m`);
     tile('Total climbed', `${fmtNum(s.totalM)} m`);
     tile('Time climbing', fmtTime(s.totalSecs));
     tile('Balloons popped', fmtNum(s.popped));
     tile('Landmarks', `${s.landmarks} / ${Progress.LANDMARKS.length}`);
-    tile('Badges', `${s.badges} / ${Progress.BADGES.length}`);
+    tile('Badges', `${s.badges} / ${Progress.BADGES.filter(b => !b.mode).length}`);
     body.append(tiles);
 
     const runs = s.runs.slice(-30);
     const section = el('section', 'chart-section');
-    section.append(el('h3', null, 'Recent runs'));
+    section.append(el('h3', null, 'Recent dailies'));
     if (!runs.length) {
-      section.append(el('p', 'muted', 'Play a run to see your history here.'));
+      section.append(el('p', 'muted', 'Play a daily to see your history here.'));
       body.append(section);
       return;
     }
     const firstNum = s.totalRuns - runs.length + 1;
-    section.append(el('p', 'muted', `Height of your last ${runs.length} run${runs.length > 1 ? 's' : ''}, oldest to newest.`));
+    section.append(el('p', 'muted', `Height of your last ${runs.length} dail${runs.length > 1 ? 'ies' : 'y'}, oldest to newest.`));
     const wrap = el('div', 'chart-wrap');
     section.append(wrap);
     body.append(section);
@@ -194,39 +195,53 @@ window.Menu = (() => {
   // ---------- Badges ----------
   function renderBadges() {
     const earned = Progress.badges;
-    body.append(el('p', 'muted', `${Object.keys(earned).length} of ${Progress.BADGES.length} badges earned.`));
-    const grid = el('div', 'badges');
-    for (const b of Progress.BADGES) {
-      const got = earned[b.id];
-      const card = el('div', `badge${got ? ' got' : ''}`);
-      card.append(
-        el('div', 'badge-icon', b.icon),
-        el('div', 'badge-name', b.name),
-        el('div', 'badge-desc', b.desc),
-        el('div', 'badge-date', got ? `Earned ${fmtDate(got)}` : 'Not yet'),
-      );
-      grid.append(card);
+    const groups = [
+      [null, 'From the daily.'],
+      ['endless', 'Endless badges, earned in Endless.'],
+      ['sprint', 'Sprint badges, earned in Sprint.'],
+    ];
+    for (const [mode, note] of groups) {
+      const list = Progress.BADGES.filter(b => (b.mode || null) === mode);
+      const got = list.filter(b => earned[b.id]).length;
+      if (mode) body.append(el('h3', null, `${mode === 'endless' ? '🌊' : '⏱️'} ${Progress.MODE_NAME[mode]}`));
+      body.append(el('p', 'muted', `${note} ${got} of ${list.length} earned.`));
+      const grid = el('div', 'badges');
+      for (const b of list) {
+        const at = earned[b.id];
+        const card = el('div', `badge${at ? ' got' : ''}`);
+        card.append(
+          el('div', 'badge-icon', b.icon),
+          el('div', 'badge-name', b.name),
+          el('div', 'badge-desc', b.desc),
+          el('div', 'badge-date', at ? `Earned ${fmtDate(at)}` : 'Not yet'),
+        );
+        grid.append(card);
+      }
+      body.append(grid);
     }
-    body.append(grid);
   }
 
   // ---------- Modes ----------
   // The daily is the main event; the rest are side modes tucked away here.
   const MODES = [
     { id: 'daily', icon: '📅', name: 'Daily', desc: 'One run a day, the same level for everyone. A new one every midnight Eastern.' },
-    { id: 'endless', icon: '🌊', name: 'Endless', desc: 'Climb until the water gets you. Play as often as you like.', best: () => Progress.best },
-    { id: 'sprint', icon: '⏱️', name: 'Sprint', desc: '60 seconds. No rising water, no balloons. How high can you get? Has its own best and doesn’t count toward your stats.', best: () => Progress.sprintBest },
+    { id: 'endless', icon: '🌊', name: 'Endless', desc: 'Practice: climb until the water gets you, as often as you like. Has its own best and badges.', best: () => Progress.endlessBest },
+    { id: 'sprint', icon: '⏱️', name: 'Sprint', desc: '60 seconds. No rising water, no balloons. How high can you get? Has its own best and badges.', best: () => Progress.sprintBest },
   ];
 
   function renderModes() {
-    body.append(el('p', 'muted', 'The daily is the main event. The rest are any time.'));
+    body.append(el('p', 'muted', 'The daily is the main event: your stats, passport and most unlocks come from it. Endless and Sprint are any time, with badges of their own.'));
     const list = el('div', 'modes');
     for (const m of MODES) {
       const playing = api.mode() === m.id;
       const card = el('div', `mode${playing ? ' current' : ''}`);
       const text = el('div', 'mode-text');
       text.append(el('div', 'mode-name', `${m.icon} ${m.name}`), el('div', 'mode-desc', m.desc));
-      if (m.best && m.best() > 0) text.append(el('div', 'mode-best', `Best ${fmtNum(m.best())} m`));
+      const modeBadges = Progress.BADGES.filter(b => b.mode === m.id);
+      const extras = [];
+      if (m.best && m.best() > 0) extras.push(`Best ${fmtNum(m.best())} m`);
+      if (modeBadges.length) extras.push(`${modeBadges.filter(b => Progress.badges[b.id]).length}/${modeBadges.length} badges`);
+      if (extras.length) text.append(el('div', 'mode-best', extras.join(' · ')));
       const today = m.id === 'daily' ? Daily.today() : null;
       const done = today && Progress.dailyResult(today.key);
       if (today) text.append(el('div', 'mode-best', done ? `Daily #${today.n}: ${fmtNum(done.m)} m · next in ${Daily.countdown(Daily.msUntilNext())}` : `Daily #${today.n} is ready`));
