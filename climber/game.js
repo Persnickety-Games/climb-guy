@@ -22,6 +22,7 @@
     armDamping: 2.5,    // how quickly the yank settles
     armRest: 34,        // relaxed arm length
     bodyGravity: 1300,  // gravity on the body
+    introFall: 260,     // max fall speed during the opening drop
     waterSpeed: 18,     // starting water rise speed
     waterRamp: 4,       // extra water speed per 1000 units climbed
   };
@@ -35,6 +36,7 @@
     ['armDamping', 'Arm damping', 0, 10, 0.1],
     ['armRest', 'Arm length (relaxed)', 15, 80, 1],
     ['bodyGravity', 'Body gravity', 300, 3000, 50],
+    ['introFall', 'Opening drop speed', 80, 800, 10],
     ['waterSpeed', 'Water speed', 0, 120, 1],
     ['waterRamp', 'Water speed-up', 0, 30, 0.5],
   ];
@@ -95,32 +97,34 @@
 
   function newGame() {
     const startHold = { x: 200, y: START_Y, w: 240, h: 20, color: '#6b5440' };
+    const cam = START_Y - 120;
     state = {
-      phase: 'ready',          // ready | playing | over
+      phase: 'ready',          // ready (opening drop) | playing | over
       overAt: 0,
       time: 0,
-      body: { x: 190, y: START_Y - T.armRest - 8, vx: 0, vy: 0 },
+      // The climber drops in from the top of the screen; tap to catch a ledge.
+      body: { x: 200, y: cam + viewH - 40, vx: 0, vy: 0 },
       hands: [
-        // The left hand starts on the ledge. Until the first throw it holds on
-        // by itself; after that it needs the left thumb down.
-        { state: 'held', autoHeld: true, x: 186, y: START_Y, vx: 0, vy: 0, t: 0, launchY: 0 },
-        { state: 'idle', autoHeld: false, x: 0, y: 0, vx: 0, vy: 0, t: 0, launchY: 0 },
+        { state: 'idle', x: 0, y: 0, vx: 0, vy: 0, t: 0, launchY: 0 },
+        { state: 'idle', x: 0, y: 0, vx: 0, vy: 0, t: 0, launchY: 0 },
       ],
       thumbs: [null, null],    // per side: { id, mode: aim|grip|none, sx, sy, cx, cy }
       holds: [startHold],
       holdsTop: START_Y,
       water: -120,
-      cam: START_Y - 300,
+      cam,
+      baseY: START_Y,          // height 0 m; set to wherever you first catch on
       maxY: START_Y,
       best: store.get('climber2.best', 0),
       newBest: false,
     };
+    placeIdle(LEFT);
     placeIdle(RIGHT);
     generateHolds();
   }
 
   function heightMeters() {
-    return Math.max(0, Math.floor((state.maxY - START_Y) / UNITS_PER_METER));
+    return Math.max(0, Math.floor((state.maxY - state.baseY) / UNITS_PER_METER));
   }
 
   function shoulder(i) {
@@ -128,29 +132,25 @@
     return { x: state.body.x + side * SHOULDER_X, y: state.body.y + SHOULDER_Y };
   }
 
+  // Free hands dangle at the sides, or reach up when nothing is holding on.
   function placeIdle(i) {
     const s = shoulder(i);
     const side = i === LEFT ? -1 : 1;
-    state.hands[i].x = s.x + side * 8;
-    state.hands[i].y = s.y - 14;
+    const falling = !state.hands.some(h => h.state === 'held');
+    state.hands[i].x = s.x + side * (falling ? 12 : 8);
+    state.hands[i].y = s.y + (falling ? 18 : -14);
   }
 
   function startPlaying() {
     if (state.phase !== 'ready') return;
     state.phase = 'playing';
-    // From now on a hand only stays on a ledge while its thumb is down.
-    state.hands.forEach((h, i) => {
-      if (!h.autoHeld) return;
-      h.autoHeld = false;
-      if (state.thumbs[i]?.mode !== 'grip') letGo(i);
-    });
+    state.baseY = state.maxY = state.body.y;
   }
 
   function letGo(i) {
     const h = state.hands[i];
     if (h.state !== 'held') return;
     h.state = 'returning';
-    h.autoHeld = false;
   }
 
   function holdUnder(h) {
@@ -220,12 +220,6 @@
     state.thumbs[i] = thumb;
 
     const h = state.hands[i];
-    if (h.state === 'held') {
-      // Taking over a hand that's holding on by itself (start of the game).
-      thumb.mode = 'grip';
-      h.autoHeld = false;
-      return;
-    }
     const atShoulder = h.state === 'idle' || h.state === 'returning';
     const hold = holdUnder(h);
     if (hold) {
@@ -281,6 +275,7 @@
     h.x = clamp(h.x, hold.x - hold.w / 2, hold.x + hold.w / 2);
     h.y = clamp(h.y, hold.y - hold.h / 2, hold.y + hold.h / 2);
     h.vx = h.vy = 0;
+    startPlaying();
   }
 
   // Slingshot: hand flies opposite to the drag, speed scales with drag length.
@@ -347,6 +342,7 @@
     body.vy += ay * dt;
     body.vx *= Math.exp(-0.4 * dt); // light air drag
     body.vy *= Math.exp(-0.4 * dt);
+    if (state.phase === 'ready') body.vy = Math.max(body.vy, -T.introFall);
     body.x += body.vx * dt;
     body.y += body.vy * dt;
 
@@ -381,11 +377,12 @@
       if (h.state === 'idle') placeIdle(i);
     });
 
-    state.maxY = Math.max(state.maxY, body.y);
+    if (state.phase === 'playing') state.maxY = Math.max(state.maxY, body.y);
 
     // Water.
+    if (state.phase === 'ready' && state.water >= body.y) gameOver(); // missed every ledge
     if (state.phase === 'playing') {
-      const climbed = Math.max(0, state.maxY - START_Y);
+      const climbed = Math.max(0, state.maxY - state.baseY);
       let speed = T.waterSpeed + T.waterRamp * climbed / 1000;
       if (state.water < state.cam - 200) speed *= 4; // catch up if you're far ahead
       state.water += speed * dt;
@@ -393,7 +390,9 @@
     }
 
     // Camera follows the body, never dipping far below the water.
-    const target = Math.max(body.y - viewH * 0.4, state.water - 60);
+    // During the opening drop it holds still until the climber nears the bottom.
+    let target = Math.max(body.y - viewH * 0.4, state.water - 60);
+    if (state.phase === 'ready') target = Math.max(Math.min(state.cam, body.y - viewH * 0.25), state.water - 60);
     state.cam += (target - state.cam) * (1 - Math.exp(-4 * dt));
   }
 
@@ -446,17 +445,19 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.12)';
     ctx.lineWidth = 1;
     const step10 = UNITS_PER_METER * 10;
-    for (let y = Math.ceil((state.cam - START_Y) / step10) * step10 + START_Y; y < state.cam + viewH; y += step10) {
+    const base = state.baseY;
+    for (let y = Math.ceil((state.cam - base) / step10) * step10 + base; y < state.cam + viewH; y += step10) {
       const sy = cssH - (y - state.cam) * scale;
       ctx.beginPath();
       ctx.moveTo(ox, sy); ctx.lineTo(ox + WORLD_W * scale, sy);
       ctx.stroke();
-      ctx.fillText(`${Math.round((y - START_Y) / UNITS_PER_METER)} m`, ox + 6, sy - 4);
+      ctx.fillText(`${Math.round((y - base) / UNITS_PER_METER)} m`, ox + 6, sy - 4);
     }
 
     // Faint divider between the two thumb zones.
     ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-    ctx.setLineDash([4, 8]);
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 10]);
     ctx.beginPath(); ctx.moveTo(cssW / 2, 0); ctx.lineTo(cssW / 2, cssH); ctx.stroke();
     ctx.setLineDash([]);
 
@@ -591,23 +592,18 @@
     ctx.textAlign = 'center';
     const cx = ox + (WORLD_W * scale) / 2;
     if (state.phase === 'ready') {
-      const by = cssH * 0.74;
-      const holding = state.thumbs[LEFT]?.mode === 'grip';
-      const hints = [
-        holding ? ['Holding ✓', 'keep it down'] : ['HOLD here', 'to keep your grip'],
-        ['DRAG down here', 'to throw · TAP to grab'],
-      ];
-      hints.forEach(([a, b], i) => {
+      const by = cssH * 0.86;
+      [LEFT, RIGHT].forEach((i) => {
         const hx = i === LEFT ? cssW * 0.25 : cssW * 0.75;
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
         roundRect(hx - cssW * 0.23, by, cssW * 0.46, 64, 12);
         ctx.fill();
-        ctx.fillStyle = i === LEFT && holding ? '#8dff9e' : SIDE_COLOR[i];
+        ctx.fillStyle = SIDE_COLOR[i];
         ctx.font = 'bold 15px system-ui, sans-serif';
-        ctx.fillText(a, hx, by + 26);
+        ctx.fillText('TAP to grab', hx, by + 26);
         ctx.fillStyle = '#fff';
         ctx.font = '12px system-ui, sans-serif';
-        ctx.fillText(b, hx, by + 46);
+        ctx.fillText('then keep holding', hx, by + 46);
       });
     } else if (state.phase === 'over') {
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
