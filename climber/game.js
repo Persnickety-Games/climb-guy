@@ -208,9 +208,24 @@
       const dir = Math.sign(anchor.x - best.x);
       best.x += dir * (bestGap - MAX_ROW_SHIFT + rand(0, 40));
     }
+    if (state.phase === 'ready' && y < state.body.y) centerForDrop(row);
     state.holds.push(...row);
     state.lastRow = row;
     maybeSpawnBalloon(y);
+  }
+
+  // The opening drop falls straight down the middle, so every row it passes
+  // gets a ledge across the center: several easy chances to catch on.
+  function centerForDrop(row) {
+    const mid = WORLD_W / 2;
+    const o = row.reduce((a, b) => (Math.abs(b.x - mid) < Math.abs(a.x - mid) ? b : a));
+    o.w = Math.max(o.w, rand(110, 160));
+    o.h = rand(16, 22);
+    o.x = mid + rand(-o.w / 2 + 40, o.w / 2 - 40);
+    for (let k = row.length - 1; k >= 0; k--) {
+      const other = row[k];
+      if (other !== o && Math.abs(other.x - o.x) < (other.w + o.w) / 2 + 10) row.splice(k, 1);
+    }
   }
 
   // ---------- Power-ups ----------
