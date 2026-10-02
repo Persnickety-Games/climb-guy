@@ -43,29 +43,41 @@ window.sfx = (() => {
     }
   }
 
-  // Ask iPhones to treat this like a media app ("playback"), which is the most
-  // reliable way to get Web Audio playing there. Newer iOS has an API for it;
-  // older iOS switches when an <audio> element plays, so loop a silent one.
-  let silentEl = null;
+  // Ask iPhones to treat this like a media app ("playback") so sound is reliable.
+  // iOS 17+ has an API for it. Older iOS switches when an <audio> element plays,
+  // so play a short silent one once (not looped: restarting it over and over
+  // keeps interrupting the Web Audio output).
+  let silentPlayed = false;
   function playbackSession() {
-    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
-    if (silentEl) {
-      if (silentEl.paused) silentEl.play().catch(() => {});
+    if (navigator.audioSession) {
+      try { navigator.audioSession.type = 'playback'; } catch {}
       return;
     }
-    if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) return;
-    const rate = 8000, n = 800; // 0.1 s of silence as a WAV file
+    if (silentPlayed || !/iPhone|iPad|iPod/.test(navigator.userAgent)) return;
+    silentPlayed = true;
+    const rate = 8000, n = 4000; // 0.5 s of silence as a WAV file
     const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
     const str = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
     str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
     v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
     v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
     str(36, 'data'); v.setUint32(40, n * 2, true);
-    silentEl = document.createElement('audio');
-    silentEl.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-    silentEl.loop = true;
-    silentEl.setAttribute('playsinline', '');
-    silentEl.play().catch(() => { silentEl = null; });
+    const el = document.createElement('audio');
+    el.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    el.setAttribute('playsinline', '');
+    el.play().catch(() => { silentPlayed = false; });
+  }
+
+  // Run fn once audio is actually running: right away if it is, otherwise after
+  // the resume finishes (so a sound isn't dropped or left queued for later).
+  function whenRunning(fn) {
+    unlock();
+    if (!ctx) return;
+    if (ctx.state === 'running') { fn(); return; }
+    let done = false;
+    const go = () => { if (!done && ctx && ctx.state === 'running') { done = true; fn(); } };
+    ctx.resume().then(go, () => {});
+    setTimeout(go, 150);
   }
 
   // iPhones count a tap's end (not its start) as permission to play sound, so
@@ -83,13 +95,14 @@ window.sfx = (() => {
     if (master) master.gain.value = m ? 0 : 0.5;
   }
 
+  const LOOKAHEAD = 0.02; // schedule a hair ahead so sounds start cleanly
   let rendering = false; // true while recording a sound offline (for the sound board's WAV downloads)
   const ready = () => ctx && (rendering || (!muted && ctx.state === 'running'));
 
   // A pitched tone with a frequency glide and a quick fade out.
   function tone(f0, f1, dur, type = 'sine', vol = 0.3, delay = 0) {
     if (!ready()) return;
-    const t = ctx.currentTime + delay;
+    const t = ctx.currentTime + LOOKAHEAD + delay;
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.type = type;
@@ -111,7 +124,7 @@ window.sfx = (() => {
       const d = noiseBuf.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     }
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + LOOKAHEAD;
     const src = ctx.createBufferSource();
     src.buffer = noiseBuf;
     const f = ctx.createBiquadFilter();
@@ -135,6 +148,7 @@ window.sfx = (() => {
     get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'not started'; }, // for debugging
     get generation() { return generation; },
+    whenRunning,
     test: () => notes([784, 1047, 1319], 0.08, 'triangle', 0.3), // played when you turn sound on
     setMuted,
     throw: () => noise(0.14, 900, 3200, 0.25, 'bandpass', 2),          // thwip
