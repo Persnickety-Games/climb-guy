@@ -15,11 +15,12 @@ Mobile, two thumbs, two hands. A blurred start screen waits for a tap, then the 
 - Sound is off for now, so the game never interrupts a podcast or music. The synthesized sounds live in `sfx.js` and on the sound board, `sounds.html` (play buttons, synthesis details, measured levels, WAV downloads). To turn sound back on, load `sfx.js` in `index.html` and set `SOUND_ON` in `game.js`.
 - Sharing adds `?beat=<height>&from=<name>` to the link; a friend who opens it gets a line to beat and a celebration when they pass it.
 - Game over shows your height in a random absurd unit (550+ of them in `units.js`, never repeating your last 30; 🎲 picks another) and a Share button: the phone's share sheet, or copy to clipboard elsewhere.
-- The ☰ menu has four tabs:
+- The ☰ menu has five tabs:
   - **Stats:** best height, run count, average and totals, plus a chart of your last 30 runs with a table view.
   - **Passport:** the 32 landmarks you've climbed past.
   - **Badges:** 23 badges.
   - **Customize:** equip unlocked bodies, hats, faces, hand and arc colors (each hand and each arc set separately), backdrops, ledge styles and water.
+  - **Modes:** side modes and variations. **Sprint** is 60 seconds with no rising water and no balloons; it has its own best, its share links add `mode=sprint`, and it doesn't count toward stats. **Classic** opens the one-finger version. Add `?mode=sprint` to the URL to start in Sprint.
 - Skins unlock at new best heights and with badges (`progress.js`); their art is in `skins.js`. Game over shows new badges, unlocks and the next unlock.
 - Progress is saved only in the browser (`localStorage`). There's no server or account, so it doesn't follow you to another device or browser.
 

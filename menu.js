@@ -1,5 +1,6 @@
-// The ☰ menu: Stats (with run history), Passport (landmarks), Badges and
-// Customize (equip unlocked skins, with a live preview). The game pauses while
+// The ☰ menu: Stats (with run history), Passport (landmarks), Badges,
+// Customize (equip unlocked skins, with a live preview) and Modes (Sprint and
+// other variations). The game pauses while
 // it's open and calls Menu.onClose to pick up skin changes.
 window.Menu = (() => {
   'use strict';
@@ -8,7 +9,7 @@ window.Menu = (() => {
   const body = root.querySelector('.menu-body');
   const tabs = [...root.querySelectorAll('.menu-tabs button')];
   let current = 'stats';
-  const api = { onClose: null };
+  const api = { onClose: null, onMode: null, mode: () => 'endless' };
 
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
@@ -38,7 +39,7 @@ window.Menu = (() => {
     tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     body.replaceChildren();
     body.scrollTop = 0;
-    ({ stats: renderStats, passport: renderPassport, badges: renderBadges, customize: renderCustomize })[tab]();
+    ({ stats: renderStats, passport: renderPassport, badges: renderBadges, customize: renderCustomize, modes: renderModes })[tab]();
   }
 
   tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
@@ -207,6 +208,32 @@ window.Menu = (() => {
       grid.append(card);
     }
     body.append(grid);
+  }
+
+  // ---------- Modes ----------
+  // Endless is the main game; the rest are side modes tucked away here.
+  const MODES = [
+    { id: 'endless', icon: '🌊', name: 'Endless', desc: 'The main game. Climb until the water gets you.', best: () => Progress.best },
+    { id: 'sprint', icon: '⏱️', name: 'Sprint', desc: '60 seconds. No rising water, no balloons. How high can you get? Has its own best and doesn’t count toward your stats.', best: () => Progress.sprintBest },
+    { id: 'classic', icon: '👆', name: 'Classic', desc: 'The original one-finger version: drag to slingshot, and the hand grabs on its own.', href: 'classic/' },
+  ];
+
+  function renderModes() {
+    body.append(el('p', 'muted', 'Side modes and variations. Endless is the main game.'));
+    const list = el('div', 'modes');
+    for (const m of MODES) {
+      const playing = api.mode() === m.id;
+      const card = el('div', `mode${playing ? ' current' : ''}`);
+      const text = el('div', 'mode-text');
+      text.append(el('div', 'mode-name', `${m.icon} ${m.name}`), el('div', 'mode-desc', m.desc));
+      if (m.best && m.best() > 0) text.append(el('div', 'mode-best', `Best ${fmtNum(m.best())} m`));
+      const btn = el(m.href ? 'a' : 'button', 'mode-play', playing ? 'Restart' : 'Play');
+      if (m.href) btn.href = m.href;
+      else btn.addEventListener('click', () => { root.hidden = true; if (api.onMode) api.onMode(m.id); });
+      card.append(text, btn);
+      list.append(card);
+    }
+    body.append(list);
   }
 
   // ---------- Customize ----------

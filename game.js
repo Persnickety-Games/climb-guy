@@ -119,6 +119,14 @@
     return dx * dx + dy * dy <= r * r;
   }
 
+  // ---------- Mode ----------
+  // Endless is the main game. Sprint (from the ☰ Modes tab or a ?mode=sprint
+  // link): 60 seconds, no rising water, no balloons, its own best.
+  const SPRINT_SECS = 60;
+  let mode = new URLSearchParams(location.search).get('mode') === 'sprint' ? 'sprint' : 'endless';
+  const sprint = () => mode === 'sprint';
+  const modeBest = () => (sprint() ? Progress.sprintBest : Progress.best);
+
   // ---------- Game state ----------
   // Hand states: held | idle | flying | returning
   let state;
@@ -149,9 +157,9 @@
       baseY: START_Y,          // height 0 m; set to wherever you first catch on
       maxY: START_Y,
       badFromM: rand(...BAD_FROM_M), // where power-downs start this run
-      best: Progress.best,
+      best: modeBest(),
       newBest: false,
-      bestAtStart: Progress.best,
+      bestAtStart: modeBest(),
       startTime: null,         // game time the climb started (first catch)
       unlockedBefore: Progress.unlockedSnapshot(), // to list what this run unlocked
       runPopped: 0,
@@ -199,7 +207,7 @@
     state.baseY = state.maxY = state.body.y;
     state.startTime = state.time;
     badge(Progress.award('first'));
-    state.nextBalloonM = EARLY ? 3 : rand(...FIRST_BALLOON_M);
+    state.nextBalloonM = sprint() ? Infinity : EARLY ? 3 : rand(...FIRST_BALLOON_M);
     state.nextMoverM = MOVERS_EARLY ? 2 : rand(...FIRST_MOVER_M);
     state.nextGhostM = GHOSTS_EARLY ? 2 : rand(...FIRST_GHOST_M);
     state.nextIcyM = ICY_EARLY ? 2 : rand(...FIRST_ICY_M);
@@ -493,7 +501,7 @@
     const name = (PARAMS.get('from') || '').replace(/[^\p{L}\p{N} '._-]/gu, '').trim().slice(0, 20);
     return { m, name };
   })();
-  const CHALLENGE = PARAMS_CHALLENGE;
+  let CHALLENGE = PARAMS_CHALLENGE; // dropped if you switch to another mode
   const challengerName = () => (CHALLENGE.name ? CHALLENGE.name : 'your friend');
   const challengerPossessive = () => (CHALLENGE.name ? `${CHALLENGE.name}'s` : "Your friend's");
 
@@ -1031,7 +1039,11 @@
         state.clutchY = null;
       }
     }
-    if (state.phase === 'playing' && !active('freeze')) {
+    if (state.phase === 'playing' && sprint() && state.time - state.startTime >= SPRINT_SECS) {
+      gameOver();
+      return;
+    }
+    if (state.phase === 'playing' && !sprint() && !active('freeze')) {
       const climbed = Math.max(0, state.maxY - state.baseY);
       let speed = T.waterSpeed + T.waterRamp * climbed / 1000;
       if (state.water < state.cam - 200) speed *= 4; // catch up if you're far ahead
@@ -1048,13 +1060,18 @@
     state.overAt = state.time;
     state.unit = pickUnit(heightMeters());
     const m = heightMeters();
-    state.result = Progress.recordRun({
-      m, secs: climbing ? state.time - state.startTime : 0, splash: climbing && m < 5,
-      unlockedBefore: state.unlockedBefore,
-    });
+    state.timeUp = sprint() && climbing && state.water < state.body.y;
+    if (sprint()) {
+      state.result = Progress.recordSprint({ m, unlockedBefore: state.unlockedBefore });
+    } else {
+      state.result = Progress.recordRun({
+        m, secs: climbing ? state.time - state.startTime : 0, splash: climbing && m < 5,
+        unlockedBefore: state.unlockedBefore,
+      });
+      store.set('climber2.best', Progress.best);
+    }
     state.newBest = state.result.isBest;
-    state.best = Progress.best;
-    store.set('climber2.best', state.best);
+    state.best = modeBest();
   }
 
   // ---------- Rendering ----------
@@ -1749,6 +1766,22 @@
     return out;
   }
 
+  // Sprint countdown, top center. Starts on the first catch.
+  function drawSprintClock(top) {
+    const used = state.startTime == null ? 0 : state.time - state.startTime;
+    const left = state.phase === 'over' ? 0 : Math.max(0, SPRINT_SECS - used);
+    const secs = Math.ceil(left);
+    const cx = ox + (WORLD_W * scale) / 2;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillText('⏱️ SPRINT', cx, top + 10);
+    ctx.font = 'bold 30px system-ui, sans-serif';
+    ctx.fillStyle = left <= 10 && state.phase === 'playing' && Math.floor(left * 2) % 2 === 0 ? '#ff6b6b' : '#fff';
+    ctx.fillText(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`, cx, top + 40);
+    ctx.textAlign = 'left';
+  }
+
   function drawHud() {
     const top = 16;
     ctx.textAlign = 'left';
@@ -1758,7 +1791,8 @@
     ctx.fillText(mText, ox + 14, top + 26);
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText(`Best ${state.best} m`, ox + 14, top + 46);
+    ctx.fillText(`${sprint() ? 'Sprint best' : 'Best'} ${state.best} m`, ox + 14, top + 46);
+    if (sprint()) drawSprintClock(top);
     drawEffects(top + 60);
     drawToast();
 
@@ -1789,12 +1823,12 @@
       ctx.fillStyle = '#fff';
       const y0 = cssH * 0.3;
       ctx.font = 'bold 34px system-ui, sans-serif';
-      ctx.fillText('Splash!', cx, y0);
+      ctx.fillText(state.timeUp ? 'Time!' : 'Splash!', cx, y0);
       ctx.font = '20px system-ui, sans-serif';
       ctx.fillText(`${heightMeters()} m`, cx, y0 + 40);
       ctx.font = '15px system-ui, sans-serif';
       ctx.fillStyle = state.newBest ? '#ffd27a' : 'rgba(255,255,255,0.8)';
-      ctx.fillText(state.newBest ? 'New best!' : `Best ${state.best} m`, cx, y0 + 68);
+      ctx.fillText(state.newBest ? (sprint() ? 'New Sprint best!' : 'New best!') : `${sprint() ? 'Sprint best' : 'Best'} ${state.best} m`, cx, y0 + 68);
       if (state.unit) {
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         ctx.font = 'italic 14px system-ui, sans-serif';
@@ -1819,7 +1853,7 @@
         lines.push(['Equip them with 🎨 Customize', 'rgba(255,255,255,0.75)']);
       }
       const next = Progress.nextUnlock();
-      if (next) lines.push([`Next unlock: ${next.m - state.best} m more for the ${next.label}`, 'rgba(255,255,255,0.75)']);
+      if (next && !sprint()) lines.push([`Next unlock: ${next.m - state.best} m more for the ${next.label}`, 'rgba(255,255,255,0.75)']);
       let ly = y0 + 300;
       for (const [text, color] of lines) {
         ctx.fillStyle = color;
@@ -1927,8 +1961,9 @@
   function shareUrl() {
     const base = location.origin + location.pathname;
     const m = heightMeters();
-    if (!m) return base;
-    const p = new URLSearchParams({ beat: String(m) });
+    if (!m) return sprint() ? `${base}?mode=sprint` : base;
+    const p = new URLSearchParams(sprint() ? { mode: 'sprint' } : {});
+    p.set('beat', String(m));
     const name = nameInput.value.trim().slice(0, 20);
     if (name) p.set('from', name);
     return `${base}?${p}`;
@@ -1939,6 +1974,7 @@
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const u = state.unit;
     const units = u ? ` That's ${unitPhrase(u)}. How many ${u.many} could you climb?` : ' Think you can do better?';
+    if (sprint()) return `I climbed ${m} meters in 60 seconds on ${date}.${units} ⏱️ ${shareUrl()}`;
     return `I climbed ${m} meters before my demise on ${date}.${units} 🧗 ${shareUrl()}`;
   }
 
@@ -2041,11 +2077,16 @@
   // On first load the game waits, blurred, until a tap; then the climber drops in.
   let started = false;
   const startEl = document.getElementById('start');
-  if (CHALLENGE) document.getElementById('start-line').textContent = `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${CHALLENGE.m} m!`;
-  else if (Progress.best > 0) document.getElementById('start-line').textContent = `Your best: ${Progress.best} m`;
+  const startLine = sprint() ? '⏱️ Sprint: 60 seconds. ' : '';
+  if (CHALLENGE) document.getElementById('start-line').textContent = `${startLine}Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${CHALLENGE.m} m!`;
+  else if (modeBest() > 0) document.getElementById('start-line').textContent = `${startLine}Your best: ${modeBest()} m`;
+  else if (startLine) document.getElementById('start-line').textContent = startLine.trim();
   function begin(e) {
     if (started) return;
     e.preventDefault();
+    dismissStart();
+  }
+  function dismissStart() {
     started = true;
     last = performance.now();
     startEl.classList.add('gone');
@@ -2058,13 +2099,23 @@
   // ---------- Menu (stats, passport, badges, customize) ----------
   document.getElementById('menu-btn').addEventListener('click', () => Menu.open());
   document.getElementById('customize-btn').addEventListener('click', () => Menu.open('customize'));
+  Menu.mode = () => mode;
+  const linkMode = mode;
+  Menu.onMode = (m) => {
+    mode = m;
+    CHALLENGE = m === linkMode ? PARAMS_CHALLENGE : null;
+    if (!started) dismissStart();
+    skin = Progress.equipped();
+    newGame();
+    last = performance.now();
+  };
   Menu.onClose = () => {
     skin = Progress.equipped();
     last = performance.now(); // don't fast-forward the time spent in the menu
   };
 
   // Read-only handle for debugging in the browser console.
-  window.climber = { get state() { return state; }, T, power: (kind, hand = 0) => applyPower(kind, hand), shareText: () => shareText() };
+  window.climber = { get state() { return state; }, get mode() { return mode; }, T, power: (kind, hand = 0) => applyPower(kind, hand), shareText: () => shareText() };
 
   newGame();
   requestAnimationFrame(frame);

@@ -94,6 +94,8 @@ window.Progress = (() => {
       badges: {},             // id -> timestamp earned
       landmarks: {},          // index -> timestamp first reached
       equipped: {},
+      sprintBest: 0,          // Sprint mode (60 s) has its own best and doesn't count as a run
+      sprintRuns: 0,
     };
   }
 
@@ -237,6 +239,20 @@ window.Progress = (() => {
     };
   }
 
+  // Save a finished Sprint. Badges earned in it still count; the run history,
+  // main best and totals don't change.
+  function recordSprint({ m, unlockedBefore }) {
+    const before = unlockedBefore || unlockedSet();
+    const isBest = m > p.sprintBest;
+    p.sprintBest = Math.max(p.sprintBest, m);
+    p.sprintRuns++;
+    p.days[dayKey()] = true;
+    if (Object.keys(p.days).length >= 3) award('regular');
+    save();
+    const after = unlockedSet();
+    return { isBest, newBadges: [], newUnlocks: [...after].filter(k => !before.has(k)).map(unlockLabel) };
+  }
+
   // The closest height-based unlock you haven't reached yet.
   function nextUnlock() {
     let best = null;
@@ -268,11 +284,13 @@ window.Progress = (() => {
   return {
     LANDMARKS, BADGES, UNLOCKS, SLOTS,
     get best() { return p.best; },
+    get sprintBest() { return p.sprintBest; },
+    get sprintRuns() { return p.sprintRuns; },
     get badges() { return p.badges; },
     get landmarks() { return p.landmarks; },
     unlockedSnapshot: () => unlockedSet(),
     isUnlocked, requirementText, equipped, equip, award, notePop, noteBirdHit, noteLandmark, noteHeight,
-    recordRun, nextUnlock, stats,
+    recordRun, recordSprint, nextUnlock, stats,
     // Debug: wipe all progress on this device.
     reset() { p = blank(); p.best = 0; save(); },
   };

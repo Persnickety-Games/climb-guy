@@ -178,23 +178,34 @@ canvas {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: max(10px, env(safe-area-inset-top)) 12px 10px 12px;
+  padding: max(10px, env(safe-area-inset-top)) 8px 10px 8px;
   border-bottom: 1px solid var(--grid);
 }
 .menu-tabs { display: flex; gap: 4px; flex: 1; overflow-x: auto; }
 .menu-tabs button, .menu-close {
   border: 0;
   border-radius: 999px;
-  padding: 7px 10px;
+  padding: 7px 8px;
   background: transparent;
   color: var(--ink-2);
-  font: 600 13.5px system-ui, sans-serif;
+  font: 600 13px system-ui, sans-serif;
   white-space: nowrap;
   cursor: pointer;
 }
 .menu-tabs { gap: 2px; }
 .menu-tabs button.active { background: #ffd166; color: #1b1b1b; }
-.menu-close { font-size: 18px; padding: 6px 12px; color: var(--ink); }
+.menu-tabs button {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 4px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+.tab-icon { font-size: 17px; line-height: 1.2; }
+.menu-close { font-size: 18px; padding: 6px 10px; color: var(--ink); }
 .menu-body {
   flex: 1;
   overflow-y: auto;
@@ -263,3 +274,17 @@ canvas {
 .skin-tile.locked { opacity: 0.5; cursor: default; }
 .skin-tile.locked .tile-icon { filter: grayscale(0.8); }
 .tile-name { font-size: 11px; line-height: 1.2; text-align: center; color: var(--ink-2); }
+
+/* Modes tab */
+.modes { display: grid; gap: 8px; }
+.mode { display: flex; align-items: center; gap: 12px; background: var(--surface); border-radius: 12px; padding: 14px; }
+.mode.current { outline: 1px solid rgba(255, 209, 102, 0.6); }
+.mode-text { flex: 1; min-width: 0; }
+.mode-name { font-size: 17px; font-weight: 700; }
+.mode-desc { font-size: 13.5px; color: var(--ink-2); margin-top: 3px; line-height: 1.35; }
+.mode-best { font-size: 13px; color: #ffd166; font-weight: 600; margin-top: 5px; }
+.mode-play {
+  flex: none; border: 0; border-radius: 999px; padding: 9px 16px; cursor: pointer;
+  background: #ffd166; color: #1b1b1b; font: 700 14px system-ui, sans-serif; text-decoration: none;
+}
+.mode.current .mode-play { background: rgba(255, 255, 255, 0.14); color: var(--ink); }

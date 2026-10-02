@@ -60,6 +60,11 @@ Balloons pop when a hand passes through them. Green balloons are power-ups. The 
 
 Decided against: ghost run, technique tips.
 
+## Done: modes
+
+- Start screen (blurred game, tap to start).
+- Modes tab in the ☰ menu for side modes. First one: ⏱️ Sprint (60 s, no rising water, no balloons, separate best). It is never the daily twist.
+
 ### Ideas for later
 
 - Backup code: export and import progress as a short text code, for moving to a new phone.
