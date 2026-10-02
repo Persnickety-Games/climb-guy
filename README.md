@@ -13,7 +13,7 @@ Simple browser games for mobile and desktop. Plain HTML/CSS/JS with no build ste
   - Ghost ledges are faint decoys with a dotted outline. Hands pass straight through them. They start at 175–200 m and get more common. Add `?ghosts` to the URL to get them from the start.
   - Every 100 m there's a golden checkpoint ledge and a celebration. Lines mark your best height and real landmarks at their real heights (a giraffe, Big Ben, the Eiffel Tower…). The sky goes from city to clouds to space.
   - Icy ledges (from 225–250 m) slowly slide you off; wind gusts (from 275–300 m) push thrown hands; birds (from 325–350 m) knock thrown hands away. Test from the start with `?icy`, `?wind` or `?birds`.
-  - Sound effects are made in code (Web Audio). 🔊 toggles mute. Every sound is on the sound board, `two-thumbs-up/sounds.html`, with play buttons, synthesis details, measured levels and WAV downloads.
+  - Sound is off for now, so the game never interrupts a podcast or music. The synthesized sounds live in `two-thumbs-up/sfx.js` and on the sound board, `two-thumbs-up/sounds.html` (play buttons, synthesis details, measured levels, WAV downloads). To turn sound back on, load `sfx.js` in `index.html` and set `SOUND_ON` in `game.js`.
   - Sharing adds `?beat=<height>&from=<name>` to the link; a friend who opens it gets a line to beat and a celebration when they pass it.
   - Game over shows your height in a random absurd unit (550+ of them in `two-thumbs-up/units.js`, never repeating your last 30; 🎲 picks another) and a Share button: the phone's share sheet, or copy to clipboard elsewhere.
 - **Two Thumbs Up Classic** (`two-thumbs-up-classic/`): the original one-finger version. Drag to slingshot, and the hand auto-grabs near the top of its arc.

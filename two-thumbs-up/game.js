@@ -66,6 +66,12 @@
   const DRAG_START_PX = 12;  // thumb movement that turns a tap into a throw
   const AIM_WINDOW_MS = 150; // ...but only this soon after touching; after that a grip is locked
   const LEFT = 0, RIGHT = 1;
+
+  // Sound is off for now (so the game never interrupts a podcast or music).
+  // The sound code lives in sfx.js and the sound board (sounds.html); to turn
+  // it back on, load sfx.js in index.html and set this to true.
+  const SOUND_ON = false;
+  const sfx = SOUND_ON && window.sfx ? window.sfx : new Proxy({}, { get: () => () => {} });
   const SIDE_COLOR = ['#ff5fa8', '#ffd166']; // left: pink (reads well on the blue sky), right: yellow
 
   // ---------- Canvas ----------
@@ -1924,18 +1930,6 @@
     Object.assign(T, DEFAULTS);
     store.set('climber3.tuning', T);
     buildTuning();
-  });
-
-  // ---------- Sound toggle ----------
-  const muteBtn = document.getElementById('mute-btn');
-  const syncMute = () => { muteBtn.textContent = sfx.muted ? '🔇' : '🔊'; };
-  syncMute();
-  muteBtn.addEventListener('click', () => {
-    sfx.unlock();
-    sfx.setMuted(!sfx.muted);
-    syncMute();
-    // A quick chime confirms sound is working (once audio has started).
-    if (!sfx.muted) sfx.whenRunning(() => sfx.test());
   });
 
   // Read-only handle for debugging in the browser console.

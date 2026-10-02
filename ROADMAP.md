@@ -43,12 +43,18 @@ Balloons pop when a hand passes through them. Green balloons are power-ups. The 
 
 - 🧈 Butterfingers (both hands let go). Removed because it was effectively instant death. It could come back with a softer version, e.g. only the lower hand lets go, or a short grace period to re-grab.
 
+## Sound (later)
+
+- Review every sound on the sound board and give feedback by number.
+- Improve the synthesis (envelopes, layering, level-matching) while keeping it all in code.
+- When sound comes back: off by default or "ambient" so it mixes with podcasts and music instead of pausing them, plus a mute toggle.
+
 ## Done: fun, challenge and sharing batch
 
 - Challenge links (`?beat=152&from=Troy`) with a line to beat and a celebration when you pass it.
 - Link preview card (`two-thumbs-up/og.png`) and home-screen icon.
 - Name: Two Thumbs Up.
-- Synthesized sound effects with a mute toggle.
+- Synthesized sound effects (built, then switched off for now so the game never interrupts a podcast; review them on `two-thumbs-up/sounds.html`).
 - Climber personality: worried near the water, grin after a big fling, scream when falling.
 - "Your best" line, landmarks at real heights, city → clouds → dusk → space.
 - Golden checkpoint ledges and a celebration every 100 m.

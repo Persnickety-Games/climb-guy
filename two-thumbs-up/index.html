@@ -26,7 +26,6 @@
 <body>
   <canvas id="game"></canvas>
 
-  <button id="mute-btn" aria-label="Sound on or off">🔊</button>
   <button id="tune-btn" aria-label="Tuning">⚙</button>
   <div id="tune" hidden>
     <h2>Tuning</h2>
@@ -45,8 +44,7 @@
   </div>
 
   <script>
-    document.write('<script src="sfx.js?v=' + window.CLIMBER_V + '"><\/script>' +
-                   '<script src="units.js?v=' + window.CLIMBER_V + '"><\/script>' +
+    document.write('<script src="units.js?v=' + window.CLIMBER_V + '"><\/script>' +
                    '<script src="game.js?v=' + window.CLIMBER_V + '"><\/script>');
   </script>
 </body>
