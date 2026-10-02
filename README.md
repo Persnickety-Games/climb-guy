@@ -15,7 +15,7 @@ Simple browser games for mobile and desktop. Plain HTML/CSS/JS with no build ste
   - Icy ledges (from 225–250 m) slowly slide you off; wind gusts (from 275–300 m) push thrown hands; birds (from 325–350 m) knock thrown hands away. Test from the start with `?icy`, `?wind` or `?birds`.
   - Sound effects are made in code (Web Audio). 🔊 toggles mute.
   - Sharing adds `?beat=<height>&from=<name>` to the link; a friend who opens it gets a line to beat and a celebration when they pass it.
-  - Game over shows your height in a random absurd unit (about 300 of them in `two-thumbs-up/units.js`, never repeating your last 30; 🎲 picks another) and a Share button: the phone's share sheet, or copy to clipboard elsewhere.
+  - Game over shows your height in a random absurd unit (550+ of them in `two-thumbs-up/units.js`, never repeating your last 30; 🎲 picks another) and a Share button: the phone's share sheet, or copy to clipboard elsewhere.
 - **Two Thumbs Up Classic** (`two-thumbs-up-classic/`): the original one-finger version. Drag to slingshot, and the hand auto-grabs near the top of its arc.
 
 Both have a ⚙ button with live tuning sliders, saved in your browser.
