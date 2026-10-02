@@ -44,8 +44,8 @@ window.Progress = (() => {
     { id: 'allpowers', icon: '🌈', name: 'Tried Everything', desc: 'Pop every kind of balloon.' },
     { id: 'regular', icon: '📅', name: 'Regular', desc: 'Play on 5 different days.' },
     { id: 'dedicated', icon: '🔁', name: 'Dedicated', desc: 'Play 100 runs.' },
-    { id: 'streak3', icon: '🔥', name: 'On a Roll', desc: 'Play the daily 3 days in a row.' },
-    { id: 'streak7', icon: '🗓️', name: 'Habit Forming', desc: 'Play the daily 7 days in a row.' },
+    { id: 'streak7', icon: '🔥', name: 'On a Roll', desc: 'Play the daily 7 days in a row.' },
+    { id: 'streak30', icon: '🗓️', name: 'Habit Forming', desc: 'Play the daily 30 days in a row.' },
     { id: 'km5', icon: '🥾', name: 'Hiker', desc: 'Climb 5 km in total.' },
     { id: 'km25', icon: '🏔️', name: 'Mountaineer', desc: 'Climb 25 km in total.' },
     { id: 'km100', icon: '🛰️', name: 'Orbit', desc: 'Climb 100 km in total.' },
@@ -254,8 +254,8 @@ window.Progress = (() => {
     if (splash) award('splash');
     if (daily) {
       p.daily[daily.key] = { m, n: daily.n };
-      if (dailyStreak(daily.key) >= 3) award('streak3');
       if (dailyStreak(daily.key) >= 7) award('streak7');
+      if (dailyStreak(daily.key) >= 30) award('streak30');
     }
     save();
     const after = unlockedSet();
