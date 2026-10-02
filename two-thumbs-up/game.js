@@ -72,7 +72,11 @@
   // it back on, load sfx.js in index.html and set this to true.
   const SOUND_ON = false;
   const sfx = SOUND_ON && window.sfx ? window.sfx : new Proxy({}, { get: () => () => {} });
-  const SIDE_COLOR = ['#ff5fa8', '#ffd166']; // left: pink (reads well on the blue sky), right: yellow
+  // The equipped skin (see skins.js / progress.js); refreshed when the menu closes.
+  let skin = Progress.equipped();
+  const handColor = (i) => Skins.color(i === LEFT ? skin.leftHand : skin.rightHand, state ? state.time : 0);
+  const arcColor = (i) => Skins.color(i === LEFT ? skin.leftArc : skin.rightArc, state ? state.time : 0);
+  const ledgeTheme = () => Skins.byId(Skins.LEDGES, skin.ledges);
 
   // ---------- Canvas ----------
   const canvas = document.getElementById('game');
@@ -120,7 +124,7 @@
   let state;
 
   function newGame() {
-    const startHold = { x: 200, y: START_Y, w: 240, h: 20, color: '#6b5440' };
+    const startHold = { x: 200, y: START_Y, w: 240, h: 20, ci: 0 };
     const cam = START_Y - 120;
     state = {
       phase: 'ready',          // ready (opening drop) | playing | over
@@ -145,9 +149,18 @@
       baseY: START_Y,          // height 0 m; set to wherever you first catch on
       maxY: START_Y,
       badFromM: rand(...BAD_FROM_M), // where power-downs start this run
-      best: store.get('climber2.best', 0),
+      best: Progress.best,
       newBest: false,
-      bestAtStart: store.get('climber2.best', 0),
+      bestAtStart: Progress.best,
+      startTime: null,         // game time the climb started (first catch)
+      unlockedBefore: Progress.unlockedSnapshot(), // to list what this run unlocked
+      runPopped: 0,
+      runBadges: [],           // badges earned this run
+      result: null,            // what recordRun returned, for the game-over screen
+      lastHeightM: 0,
+      fallTop: null,           // highest point of the current fall (Freefall badge)
+      clutchY: null,           // where you were when the water nearly got you (Clutch)
+      flingFromY: 0,
       birds: [],
       wind: { a: 0, target: 0, until: 0, next: 0 },
       windBits: [],            // streaks and leaves showing the wind
@@ -184,6 +197,8 @@
     if (state.phase !== 'ready') return;
     state.phase = 'playing';
     state.baseY = state.maxY = state.body.y;
+    state.startTime = state.time;
+    badge(Progress.award('first'));
     state.nextBalloonM = EARLY ? 3 : rand(...FIRST_BALLOON_M);
     state.nextMoverM = MOVERS_EARLY ? 2 : rand(...FIRST_MOVER_M);
     state.nextGhostM = GHOSTS_EARLY ? 2 : rand(...FIRST_GHOST_M);
@@ -208,7 +223,6 @@
   }
 
   // ---------- Level generation ----------
-  const HOLD_COLORS = ['#6b5440', '#5a6b48', '#4f5d73', '#7a5a5a', '#5e5470'];
 
   function generateHolds() {
     while (state.holdsTop < state.cam + viewH + T.armReach + 200) {
@@ -236,7 +250,7 @@
       const x = rand(slotW * i + w / 2 + 6, slotW * (i + 1) - w / 2 - 6);
       row.push({
         x, y: y + rand(-15, 15), w, h,
-        color: HOLD_COLORS[(Math.random() * HOLD_COLORS.length) | 0],
+        ci: (Math.random() * 5) | 0, // which of the ledge theme's colors
       });
     }
     const prev = state.lastRow || [state.holds[0]];
@@ -343,7 +357,7 @@
       if (row.some(o => Math.abs(o.x - x) < (o.w + w) / 2 + 12)) continue;
       state.holds.push({
         x, y: y + rand(-15, 15), w, h, ghost: true,
-        color: HOLD_COLORS[(Math.random() * HOLD_COLORS.length) | 0],
+        ci: (Math.random() * 5) | 0, // which of the ledge theme's colors
       });
       state.nextGhostM = m + ghostGapM(m);
       return;
@@ -464,6 +478,7 @@
         if (!b.hitAt || state.time - b.hitAt > 0.5) {
           b.hitAt = state.time;
           sfx.bird();
+          badge(Progress.noteBirdHit());
           burstConfetti(ox + b.x * scale, cssH - (b.y - state.cam) * scale, 10, ['#ddd', '#999', '#fff']);
         }
       }
@@ -482,22 +497,16 @@
   const challengerName = () => (CHALLENGE.name ? CHALLENGE.name : 'your friend');
   const challengerPossessive = () => (CHALLENGE.name ? `${CHALLENGE.name}'s` : "Your friend's");
 
-  // Real things you climb past, at their real heights.
-  const LANDMARKS = [
-    [5.5, '🦒', 'a giraffe'], [12, '🦕', 'a Brachiosaurus'], [21, '🎈', 'a hot air balloon'],
-    [46, '🗽', 'the Statue of Liberty'], [108, '🦖', 'Godzilla'], [139, '🔺', 'the Great Pyramid'],
-    [184, '🛸', 'the Space Needle'], [227, '🌉', 'the Golden Gate Bridge towers'], [269, '🚢', 'the Titanic (on end)'],
-    [330, '🗼', 'the Eiffel Tower'], [381, '🏙️', 'the Empire State Building'], [442, '🏢', 'the Willis Tower'],
-    [508, '🎋', 'Taipei 101'], [553, '🍁', 'the CN Tower'], [604, '🪨', 'Pulpit Rock (Norway)'],
-    [679, '🌴', 'Merdeka 118'], [739, '💦', 'Yosemite Falls'], [828, '🌆', 'the Burj Khalifa'],
-    [914, '🧗', 'El Capitan'], [979, '💧', 'Angel Falls'],
-    [1085, '⛰️', 'Table Mountain'], [1250, '⚡', "Mount Thor's sheer cliff"], [1345, '🏔️', 'Ben Nevis'],
-    [1444, '🌓', 'Half Dome'],
-    // Far-off goals.
-    [3776, '🗻', 'Mount Fuji'], [4000, '🪂', 'a skydiving jump'], [4478, '🏔️', 'the Matterhorn'],
-    [5895, '🦁', 'Kilimanjaro'], [8849, '🚩', 'Mount Everest'], [10700, '✈️', 'a plane at cruising altitude'],
-    [100000, '🌌', 'the edge of space'], [408000, '🛰️', 'the ISS'],
-  ];
+  const LANDMARKS = Progress.LANDMARKS; // real things you climb past, at their real heights
+
+  // Show newly earned badge(s) and remember them for the game-over screen.
+  function badge(b) {
+    for (const x of [].concat(b || [])) {
+      if (!x) continue;
+      state.runBadges.push(x);
+      celebrate(`${x.icon} Badge: ${x.name}!`, '', true);
+    }
+  }
 
   function celebrate(text, sub, small = false) {
     state.banner = { text, sub, at: state.time, small };
@@ -521,9 +530,18 @@
     if (state.phase !== 'playing') return;
     const m = climbedM();
     while (state.landmarkIdx < LANDMARKS.length && m >= LANDMARKS[state.landmarkIdx][0]) {
+      Progress.noteLandmark(state.landmarkIdx);
       const [, icon, name] = LANDMARKS[state.landmarkIdx++];
       celebrate(`${icon} Higher than ${name}!`, '', true);
     }
+    if (Math.floor(m) > state.lastHeightM) {
+      state.lastHeightM = Math.floor(m);
+      badge(Progress.noteHeight(state.lastHeightM));
+    }
+    const secs = state.time - state.startTime;
+    if (m >= 150 && state.runPopped === 0) badge(Progress.award('purist'));
+    if (m >= 100 && secs <= 60) badge(Progress.award('speed'));
+    if (secs >= 300) badge(Progress.award('marathon'));
     while (m >= state.nextMilestoneM) {
       celebrate(`${state.nextMilestoneM} m!`, 'Checkpoint');
       sfx.milestone();
@@ -547,12 +565,15 @@
     const holding = hands.some(h => h.state === 'held');
     if (!state.flinging && holding && body.vy > 650) {
       state.flinging = true;
+      state.flingFromY = body.y;
       state.grinUntil = state.time + 1.2;
       sfx.fling();
     } else if (state.flinging && body.vy < 200) {
       state.flinging = false;
+      if (state.phase === 'playing' && body.y - state.flingFromY >= 20 * UNITS_PER_METER) badge(Progress.award('fling'));
     }
     if (holding) state.screamed = false;
+    else if (state.phase === 'playing' && !state.dropping && !state.rocket) state.fallTop = Math.max(state.fallTop ?? body.y, body.y);
     else if (!state.screamed && state.phase === 'playing' && !state.rocket && body.vy < -300) {
       state.screamed = true;
       sfx.scream();
@@ -631,6 +652,9 @@
   function applyPower(kind, hand) {
     if (!POWERS[kind]) return;
     state.toast = { kind, at: state.time };
+    state.runPopped++;
+    badge(Progress.notePop(kind));
+    if (kind === 'ouch' && hurt(1 - hand)) badge(Progress.award('doubleouch'));
     sfx.pop();
     (POWERS[kind].good ? sfx.good : sfx.bad)();
     if (kind === 'rocket') startRocket();
@@ -743,7 +767,7 @@
 
   function onDown(e) {
     sfx.unlock(); // browsers only allow sound after a touch
-    if (!tunePanel.hidden) return;
+    if (!tunePanel.hidden || Menu.isOpen()) return;
     e.preventDefault();
     if (state.phase === 'over') {
       if (state.time - state.overAt > 0.6) newGame();
@@ -777,6 +801,7 @@
     // During Auto-grab, taps only throw a resting hand, so a stray tap can't
     // grab with it (which would make the other hand let go).
     const hold = hurt(i) || (autoGrab && atShoulder) ? null : holdUnder(h);
+    if (!hold && state.holds.some(o => o.ghost && circleHitsRect(h.x, h.y, HAND_R, o))) badge(Progress.award('fooled'));
     if (hold) {
       // Tap to grab: only works if the hand is over a ledge right now.
       grab(i, hold);
@@ -837,6 +862,8 @@
     h.slideDir = 0;
     h.slideV = 0;
     sfx.grab();
+    if (state.fallTop != null && state.fallTop - state.body.y >= 10 * UNITS_PER_METER) badge(Progress.award('freefall'));
+    state.fallTop = null;
     // Auto-grab: holding is automatic, and the other hand lets go once this one
     // has hold of something new. A hand left auto-held after the timer ends also
     // lets go when the other hand grabs.
@@ -996,6 +1023,14 @@
   }
 
   function stepWater(dt) {
+    if (state.phase === 'playing') {
+      // Clutch: the water got within 1 m, then you climbed 10 m clear of that spot.
+      if (state.body.y - state.water < UNITS_PER_METER) state.clutchY = state.body.y;
+      else if (state.clutchY != null && state.body.y - state.clutchY >= 10 * UNITS_PER_METER) {
+        badge(Progress.award('clutch'));
+        state.clutchY = null;
+      }
+    }
     if (state.phase === 'playing' && !active('freeze')) {
       const climbed = Math.max(0, state.maxY - state.baseY);
       let speed = T.waterSpeed + T.waterRamp * climbed / 1000;
@@ -1008,15 +1043,18 @@
 
   function gameOver() {
     sfx.splash();
+    const climbing = state.phase === 'playing';
     state.phase = 'over';
     state.overAt = state.time;
     state.unit = pickUnit(heightMeters());
     const m = heightMeters();
-    if (m > state.best) {
-      state.best = m;
-      state.newBest = true;
-      store.set('climber2.best', m);
-    }
+    state.result = Progress.recordRun({
+      m, secs: climbing ? state.time - state.startTime : 0, splash: climbing && m < 5,
+      unlockedBefore: state.unlockedBefore,
+    });
+    state.newBest = state.result.isBest;
+    state.best = Progress.best;
+    store.set('climber2.best', state.best);
   }
 
   // ---------- Rendering ----------
@@ -1028,16 +1066,8 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  // Sky by height: day, then dusk, then space.
-  const SKY = [[0, [135, 197, 234]], [250, [95, 150, 205]], [450, [70, 60, 120]], [650, [14, 14, 34]]];
-  function skyAt(m) {
-    let i = 0;
-    while (i < SKY.length - 2 && m > SKY[i + 1][0]) i++;
-    const [m0, a] = SKY[i], [m1, b] = SKY[i + 1];
-    const t = clamp((m - m0) / (m1 - m0), 0, 1);
-    const c = a.map((v, k) => Math.round(lerp(v, b[k], t)));
-    return `rgb(${c[0]},${c[1]},${c[2]})`;
-  }
+  // Sky by height, from the equipped backdrop (day, dusk, then space for Classic).
+  const skyAt = (m) => Skins.skyAt(skin.backdrop, m);
 
   // Scenery, made once: a city skyline, clouds up to ~600 m, and a star field.
   const SKYLINE = (() => {
@@ -1059,8 +1089,9 @@
 
   function drawScenery() {
     const camM = (state.cam - START_Y) / UNITS_PER_METER;
-    // Stars fade in as the sky darkens.
-    const starA = clamp((camM - 380) / 250, 0, 1);
+    const bd = Skins.byId(Skins.BACKDROPS, skin.backdrop);
+    // Stars fade in as the sky darkens (some backdrops have them from the start).
+    const starA = bd.starsFrom === 0 ? 0.8 : clamp((camM - bd.starsFrom) / 250, 0, 1);
     if (starA > 0) {
       for (const st of STARFIELD) {
         ctx.globalAlpha = starA * (0.5 + 0.5 * Math.sin(state.time * 2 + st.tw));
@@ -1072,23 +1103,12 @@
     // City skyline far below, scrolling at half speed.
     const ground = parallaxY(START_Y - 80, 0.5);
     if (ground > -10) {
-      for (const b of SKYLINE) {
-        const top = ground - b.h * scale * 0.7;
-        if (top > cssH) continue;
-        ctx.fillStyle = 'rgba(30, 55, 90, 0.35)';
-        ctx.fillRect(ox + b.x * scale, top, b.w * scale, ground - top + cssH);
-        ctx.fillStyle = 'rgba(255, 230, 150, 0.25)';
-        for (let wy = top + 8; wy < ground - 6; wy += 14) {
-          for (let wx = 6; wx < b.w * scale - 6; wx += 12) {
-            if (((wx * 7 + wy * 13 + b.lit * 100) | 0) % 5 === 0) ctx.fillRect(ox + b.x * scale + wx, wy, 4, 5);
-          }
-        }
-      }
+      Skins.drawSkyline(ctx, skin.backdrop, SKYLINE.map(b => ({ x: ox + b.x * scale, w: b.w * scale, h: b.h * scale * 0.7, lit: b.lit })), ground);
     }
     // Drifting clouds, thinning out toward space.
     const cloudA = 1 - clamp((camM - 450) / 200, 0, 1);
     if (cloudA > 0) {
-      ctx.fillStyle = `rgba(255,255,255,${0.35 * cloudA})`;
+      ctx.fillStyle = `rgba(${bd.cloud},${0.35 * cloudA})`;
       for (const c of CLOUDS) {
         const sy = parallaxY(c.y, 0.8);
         if (sy < -80 || sy > cssH + 80) continue;
@@ -1322,10 +1342,13 @@
   }
 
   function drawLedge(h) {
+    const theme = ledgeTheme();
+    const special = h.icy || h.checkpoint;
+    const color = special ? h.color : theme.colors[h.ci || 0];
     if (h.ghost) {
       // Faint fill and a dotted outline: obvious if you look, easy to miss in a hurry.
       ctx.globalAlpha = 0.55;
-      ctx.fillStyle = h.color;
+      ctx.fillStyle = color;
       roundRect(h.x - h.w / 2, h.y - h.h / 2, h.w, h.h, 4);
       ctx.fill();
       ctx.globalAlpha = 0.6;
@@ -1342,9 +1365,10 @@
     const strain = h.breakable && !h.broken ? h.heldFor / BREAK_SECS : 0;
     const x = h.x + (strain ? Math.sin(state.time * 70) * strain * 2.5 : 0);
     ctx.globalAlpha = h.broken ? 0.6 : 1;
-    ctx.fillStyle = h.color;
+    ctx.fillStyle = special ? color : Skins.ledgeFill(theme.style, color);
     roundRect(x - h.w / 2, h.y - h.h / 2, h.w, h.h, 4);
     ctx.fill();
+    if (!special) Skins.decorateLedge(ctx, x - h.w / 2, h.y - h.h / 2, h.w, h.h, theme.style, color);
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
     ctx.fillRect(x - h.w / 2 + 2, h.y + h.h / 2 - 4, h.w - 4, 2);
     if (h.icy) {
@@ -1431,7 +1455,7 @@
       if (!v) return;
       const s = shoulder(i);
       const h = { x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y };
-      ctx.fillStyle = SIDE_COLOR[i];
+      ctx.fillStyle = arcColor(i);
       ctx.globalAlpha = 0.8;
       for (let n = 0; n < 600 && !handFlightOver(h); n++) {
         advanceHand(h, s, DT);
@@ -1457,7 +1481,7 @@
     hands.forEach((h, i) => {
       const s = shoulder(i);
       const len = Math.hypot(h.x - s.x, h.y - s.y);
-      ctx.strokeStyle = SIDE_COLOR[i];
+      ctx.strokeStyle = handColor(i);
       ctx.lineWidth = clamp(8 - len * 0.02, 2.5, 7);
       ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(h.x, h.y); ctx.stroke();
     });
@@ -1480,8 +1504,7 @@
       ctx.fill();
     }
 
-    ctx.fillStyle = '#e8873a';
-    ctx.beginPath(); ctx.arc(body.x, body.y, BODY_R, 0, Math.PI * 2); ctx.fill();
+    Skins.drawBody(ctx, body.x, body.y, BODY_R, skin.body);
 
     // Eyes follow a flying hand, else look up; they go wide when falling.
     const fly = hands.find(h => h.state === 'flying');
@@ -1509,9 +1532,11 @@
       ctx.beginPath(); ctx.arc(body.x + ex + (lx / ll) * 2, body.y + 4 + (ly / ll) * 2, 2.2, 0, Math.PI * 2); ctx.fill();
     }
     drawFace(body, falling, inPain);
+    Skins.drawFaceExtra(ctx, body.x, body.y, BODY_R, skin.face);
+    Skins.drawHat(ctx, body.x, body.y, BODY_R, skin.hat, state.time);
 
     hands.forEach((h, i) => {
-      ctx.fillStyle = SIDE_COLOR[i];
+      ctx.fillStyle = handColor(i);
       ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R, 0, Math.PI * 2); ctx.fill();
       if (h.state === 'held') {
         ctx.strokeStyle = 'rgba(0,0,0,0.45)';
@@ -1600,7 +1625,8 @@
     const frozen = active('freeze'), flood = active('flood');
     const wave = frozen ? 0 : flood ? 5 : 3;
     const waveSpeed = flood ? 6 : 3;
-    ctx.fillStyle = frozen ? 'rgba(200, 235, 255, 0.88)' : flood ? 'rgba(20, 80, 160, 0.8)' : 'rgba(30, 110, 200, 0.72)';
+    const wt = Skins.byId(Skins.WATERS, skin.water);
+    ctx.fillStyle = frozen ? 'rgba(200, 235, 255, 0.88)' : flood ? wt.flood : wt.fill;
     ctx.beginPath();
     ctx.moveTo(-500, bottom);
     for (let x = -500; x <= WORLD_W + 500; x += 10) {
@@ -1609,6 +1635,26 @@
     ctx.lineTo(WORLD_W + 500, bottom);
     ctx.closePath();
     ctx.fill();
+    if (!frozen && (wt.glow || wt.shine)) {
+      // Lava glows along the surface; chocolate gets a glossy streak.
+      ctx.strokeStyle = wt.glow || wt.shine;
+      ctx.lineWidth = wt.glow ? 3 : 2;
+      ctx.beginPath();
+      for (let x = -500; x <= WORLD_W + 500; x += 10) {
+        const y = top - (wt.glow ? 0 : 5) + Math.sin(x * 0.05 + state.time * waveSpeed) * wave;
+        x === -500 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    if (!frozen && wt.bubbles) {
+      // Bubbles rising and popping just under the surface.
+      ctx.fillStyle = wt.bubbles;
+      for (let k = 0; k < 9; k++) {
+        const cyc = (state.time * 0.6 + k * 0.37) % 1;
+        const bx = ((k * 53) % WORLD_W) + Math.sin(k + state.time) * 6;
+        ctx.beginPath(); ctx.arc(bx, top - 30 + cyc * 26, 2 + (k % 3) * 1.5 * (1 - cyc), 0, Math.PI * 2); ctx.fill();
+      }
+    }
     if (frozen) {
       // Ice: a bright surface line and a few cracks.
       ctx.strokeStyle = 'rgba(255,255,255,0.9)';
@@ -1631,7 +1677,7 @@
       if (sy > -HAND_R * scale) return;
       const sx = ox + h.x * scale;
       const above = Math.min(1, -sy / (viewH * scale)); // fades as it goes further
-      ctx.fillStyle = SIDE_COLOR[i];
+      ctx.fillStyle = handColor(i);
       ctx.globalAlpha = 1 - above * 0.6;
       ctx.beginPath();
       ctx.moveTo(sx, 6);
@@ -1647,8 +1693,8 @@
   function drawThumbs() {
     state.thumbs.forEach((t, i) => {
       if (!t) return;
-      ctx.strokeStyle = SIDE_COLOR[i];
-      ctx.fillStyle = SIDE_COLOR[i];
+      ctx.strokeStyle = handColor(i);
+      ctx.fillStyle = handColor(i);
       if (t.mode === 'aim') {
         ctx.globalAlpha = 0.6;
         ctx.lineWidth = 2;
@@ -1666,6 +1712,41 @@
       }
       ctx.globalAlpha = 1;
     });
+  }
+
+  // Centered text that shrinks to fit a width (down to 10px).
+  function fitText(text, x, y, maxW, size) {
+    let px = size;
+    do {
+      ctx.font = `bold ${px}px system-ui, sans-serif`;
+      if (ctx.measureText(text).width <= maxW) break;
+      px -= 0.5;
+    } while (px > 10);
+    ctx.fillText(text, x, y);
+  }
+
+  // Wrap a comma-separated list over at most 2 lines (at the current font),
+  // ending with "+N more" if it still doesn't fit.
+  function listLines(prefix, items, maxW) {
+    const out = [];
+    let line = prefix, i = 0;
+    while (i < items.length) {
+      const piece = (line === prefix || line === '' ? '' : ', ') + items[i];
+      if (ctx.measureText(line + piece).width <= maxW || line === prefix || line === '') { line += piece; i++; continue; }
+      if (out.length === 1) break;
+      out.push(line + ',');
+      line = '';
+    }
+    if (i < items.length) {
+      // Out of room: drop items from the end of line 2 until "+N more" fits.
+      let rest = items.length - i;
+      while (ctx.measureText(`${line}, +${rest} more`).width > maxW && line.includes(', ')) {
+        line = line.slice(0, line.lastIndexOf(', ')); rest++;
+      }
+      line += `, +${rest} more`;
+    }
+    out.push(line);
+    return out;
   }
 
   function drawHud() {
@@ -1690,9 +1771,14 @@
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
         roundRect(hx - cssW * 0.23, by, cssW * 0.46, 64, 12);
         ctx.fill();
-        ctx.fillStyle = SIDE_COLOR[i];
+        // White text with a hand-colored dot, so dark hand colors stay readable.
+        ctx.fillStyle = '#fff';
         ctx.font = 'bold 15px system-ui, sans-serif';
-        ctx.fillText('TAP to grab', hx, by + 26);
+        ctx.fillText('TAP to grab', hx + 9, by + 26);
+        const tw = ctx.measureText('TAP to grab').width;
+        ctx.beginPath(); ctx.arc(hx + 9 - tw / 2 - 12, by + 21, 6, 0, Math.PI * 2);
+        ctx.fillStyle = handColor(i); ctx.fill();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();
         ctx.fillStyle = '#fff';
         ctx.font = '12px system-ui, sans-serif';
         ctx.fillText('then keep holding', hx, by + 46);
@@ -1721,9 +1807,28 @@
         ctx.fillText(state.beatChallenge ? `You beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${CHALLENGE.m} m!`
           : `${challengerPossessive()} ${CHALLENGE.m} m still stands (${left} m to go)`, cx, y0 + 118);
       }
+      // Badges and unlocks from this run, and what's next.
+      const lines = [];
+      const seen = new Set();
+      const newBadges = [...state.runBadges, ...(state.result ? state.result.newBadges : [])].filter(b => !seen.has(b.id) && seen.add(b.id));
+      const maxW = Math.min(cssW - 32, WORLD_W * scale - 16);
+      ctx.font = 'bold 14px system-ui, sans-serif';
+      if (newBadges.length) lines.push(...listLines(`🏅 New badge${newBadges.length > 1 ? 's' : ''}: `, newBadges.map(b => b.name), maxW).map(t => [t, '#ffd166']));
+      if (state.result && state.result.newUnlocks.length) {
+        lines.push(...listLines('🔓 Unlocked: ', state.result.newUnlocks, maxW).map(t => [t, '#7dffb0']));
+        lines.push(['Equip them with 🎨 Customize', 'rgba(255,255,255,0.75)']);
+      }
+      const next = Progress.nextUnlock();
+      if (next) lines.push([`Next unlock: ${next.m - state.best} m more for the ${next.label}`, 'rgba(255,255,255,0.75)']);
+      let ly = y0 + 300;
+      for (const [text, color] of lines) {
+        ctx.fillStyle = color;
+        fitText(text, cx, ly, maxW, 14);
+        ly += 20;
+      }
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText('Tap anywhere to climb again', cx, y0 + 290);
+      ctx.fillText('Tap anywhere to climb again', cx, ly + 14);
     }
     ctx.textAlign = 'left';
   }
@@ -1744,7 +1849,7 @@
       const hand = key.split(':')[1];
       if (hand !== undefined) {
         // Which hand is hurt.
-        ctx.fillStyle = SIDE_COLOR[hand];
+        ctx.fillStyle = handColor(+hand);
         ctx.beginPath(); ctx.arc(ox + 108, y + 10, 4, 0, Math.PI * 2); ctx.fill();
       }
       y += 24;
@@ -1864,7 +1969,7 @@
   });
 
   function syncOverlay() {
-    const show = state.phase === 'over' && tunePanel.hidden;
+    const show = state.phase === 'over' && tunePanel.hidden && !Menu.isOpen();
     if (overActions.hidden === show) { // only touch the DOM when it changes
       overActions.hidden = !show;
       if (!show) shareStatus.textContent = '';
@@ -1878,7 +1983,7 @@
   function frame(now) {
     const elapsed = Math.min(0.1, (now - last) / 1000);
     last = now;
-    if (tunePanel.hidden) {
+    if (tunePanel.hidden && !Menu.isOpen()) { // paused while the tuning panel or menu is open
       acc += elapsed;
       while (acc >= DT) {
         state.time += DT;
@@ -1931,6 +2036,14 @@
     store.set('climber3.tuning', T);
     buildTuning();
   });
+
+  // ---------- Menu (stats, passport, badges, customize) ----------
+  document.getElementById('menu-btn').addEventListener('click', () => Menu.open());
+  document.getElementById('customize-btn').addEventListener('click', () => Menu.open('customize'));
+  Menu.onClose = () => {
+    skin = Progress.equipped();
+    last = performance.now(); // don't fast-forward the time spent in the menu
+  };
 
   // Read-only handle for debugging in the browser console.
   window.climber = { get state() { return state; }, T, power: (kind, hand = 0) => applyPower(kind, hand), shareText: () => shareText() };

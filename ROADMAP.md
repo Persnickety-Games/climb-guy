@@ -49,6 +49,21 @@ Balloons pop when a hand passes through them. Green balloons are power-ups. The 
 - Improve the synthesis (envelopes, layering, level-matching) while keeping it all in code.
 - When sound comes back: off by default or "ambient" so it mixes with podcasts and music instead of pausing them, plus a mute toggle.
 
+## Done: stickiness batch
+
+- Stats page with a chart of your last 30 runs and a table view.
+- Landmark passport (32 landmarks).
+- 23 badges.
+- Skins unlocked by height and by badges, with a customization screen. Skins cover the body, hat, face, each hand and arc color separately, backdrop, ledges and water.
+- "Next unlock" on game over.
+- Everything is saved on the device with `localStorage`, with no backend.
+
+Decided against: ghost run, technique tips.
+
+### Ideas for later
+
+- Backup code: export and import progress as a short text code, for moving to a new phone.
+
 ## Done: fun, challenge and sharing batch
 
 - Challenge links (`?beat=152&from=Troy`) with a line to beat and a celebration when you pass it.

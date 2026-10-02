@@ -26,6 +26,7 @@
 <body>
   <canvas id="game"></canvas>
 
+  <button id="menu-btn" aria-label="Stats, badges and customize">☰</button>
   <button id="tune-btn" aria-label="Tuning">⚙</button>
   <div id="tune" hidden>
     <h2>Tuning</h2>
@@ -39,10 +40,31 @@
   <div id="over-actions" hidden>
     <button id="share-btn">Share</button>
     <button id="reroll-btn" aria-label="Try a different unit">🎲</button>
+    <button id="customize-btn">🎨 Customize</button>
     <input id="name-input" maxlength="20" autocomplete="nickname" placeholder="Your name (for challenge links)">
     <div id="share-status" aria-live="polite"></div>
   </div>
 
+  <div id="menu" hidden>
+    <div class="menu-panel">
+      <header class="menu-head">
+        <nav class="menu-tabs">
+          <button data-tab="stats">Stats</button>
+          <button data-tab="passport">Passport</button>
+          <button data-tab="badges">Badges</button>
+          <button data-tab="customize">Customize</button>
+        </nav>
+        <button class="menu-close" aria-label="Close">✕</button>
+      </header>
+      <div class="menu-body"></div>
+    </div>
+  </div>
+
+  <script>
+    document.write('<script src="skins.js?v=' + window.CLIMBER_V + '"><\/script>' +
+                   '<script src="progress.js?v=' + window.CLIMBER_V + '"><\/script>' +
+                   '<script src="menu.js?v=' + window.CLIMBER_V + '"><\/script>');
+  </script>
   <script>
     document.write('<script src="units.js?v=' + window.CLIMBER_V + '"><\/script>' +
                    '<script src="game.js?v=' + window.CLIMBER_V + '"><\/script>');

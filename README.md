@@ -16,6 +16,13 @@ Simple browser games for mobile and desktop. Plain HTML/CSS/JS with no build ste
   - Sound is off for now, so the game never interrupts a podcast or music. The synthesized sounds live in `two-thumbs-up/sfx.js` and on the sound board, `two-thumbs-up/sounds.html` (play buttons, synthesis details, measured levels, WAV downloads). To turn sound back on, load `sfx.js` in `index.html` and set `SOUND_ON` in `game.js`.
   - Sharing adds `?beat=<height>&from=<name>` to the link; a friend who opens it gets a line to beat and a celebration when they pass it.
   - Game over shows your height in a random absurd unit (550+ of them in `two-thumbs-up/units.js`, never repeating your last 30; 🎲 picks another) and a Share button: the phone's share sheet, or copy to clipboard elsewhere.
+  - The ☰ menu has four tabs:
+    - **Stats:** best height, run count, average and totals, plus a chart of your last 30 runs with a table view.
+    - **Passport:** the 32 landmarks you've climbed past.
+    - **Badges:** 23 badges.
+    - **Customize:** equip unlocked bodies, hats, faces, hand and arc colors (each hand and each arc set separately), backdrops, ledge styles and water.
+  - Skins unlock at new best heights and with badges (`two-thumbs-up/progress.js`); their art is in `two-thumbs-up/skins.js`. Game over shows new badges, unlocks and the next unlock.
+  - Progress is saved only in the browser (`localStorage`). There's no server or account, so it doesn't follow you to another device or browser.
 - **Two Thumbs Up Classic** (`two-thumbs-up-classic/`): the original one-finger version. Drag to slingshot, and the hand auto-grabs near the top of its arc.
 
 Both have a ⚙ button with live tuning sliders, saved in your browser.
