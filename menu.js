@@ -355,20 +355,19 @@ window.Menu = (() => {
     ledge(c, cx - 70, h - 62, 120, 16, eq.ledges, 0);
     ledge(c, w * 0.62, h - 130, 90, 16, eq.ledges, 1);
     water(c, w, 26, eq.water);
-    // The right hand's aim arc, as dots.
-    const sx = cx + 13, sy = 110;
+    // Each hand's aim arc, as dots starting from that hand.
+    const lh = [cx - 20, h - 54], rh = [cx + 40, 92];
     c.fillStyle = Skins.color(eq.rightArc, 0);
-    for (let t = 0.12; t < 1; t += 0.09) {
-      const px = sx + t * 130, py = sy + 120 * t - 95 * t * t;
+    for (let t = 0.14; t < 1; t += 0.09) {
+      const px = rh[0] + t * 130, py = rh[1] + 120 * t - 95 * t * t;
       c.beginPath(); c.arc(px, py, 2.6, 0, Math.PI * 2); c.fill();
     }
-    // A hint of the left arc too, so both arc colors show.
     c.fillStyle = Skins.color(eq.leftArc, 0);
-    for (let t = 0.15; t < 0.7; t += 0.1) {
-      const px = cx - 13 - t * 90, py = sy + 100 * t - 90 * t * t;
+    for (let t = 0.16; t < 0.75; t += 0.1) {
+      const px = lh[0] - t * 110, py = lh[1] + 60 * t - 70 * t * t;
       c.beginPath(); c.arc(px, py, 2.6, 0, Math.PI * 2); c.fill();
     }
-    climber(c, cx, 105, 22, eq, [cx - 20, h - 54], [cx + 40, 92]);
+    climber(c, cx, 105, 22, eq, lh, rh);
   }
 
   // Small tile icons for each choice.
