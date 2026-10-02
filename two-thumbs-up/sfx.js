@@ -83,7 +83,8 @@ window.sfx = (() => {
     if (master) master.gain.value = m ? 0 : 0.5;
   }
 
-  const ready = () => ctx && !muted && ctx.state === 'running';
+  let rendering = false; // true while recording a sound offline (for the sound board's WAV downloads)
+  const ready = () => ctx && (rendering || (!muted && ctx.state === 'running'));
 
   // A pitched tone with a frequency glide and a quick fade out.
   function tone(f0, f1, dur, type = 'sine', vol = 0.3, delay = 0) {
@@ -129,7 +130,7 @@ window.sfx = (() => {
   const notes = (freqs, step, type = 'triangle', vol = 0.22) =>
     freqs.forEach((f, i) => tone(f, f, step * 1.6, type, vol, i * step));
 
-  return {
+  const api = {
     unlock,
     get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'not started'; }, // for debugging
@@ -150,4 +151,21 @@ window.sfx = (() => {
     milestone: () => notes([523, 659, 784, 1047], 0.09),
     fanfare: () => notes([523, 659, 784, 1047, 784, 1047], 0.1, 'square', 0.12),
   };
+
+  // Record one sound into an AudioBuffer (mono, 44.1 kHz) without playing it.
+  api.render = (name, seconds = 1.5) => {
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const off = new OAC(1, Math.ceil(44100 * seconds), 44100);
+    const saved = [ctx, master, noiseBuf];
+    ctx = off;
+    master = off.createGain();
+    master.gain.value = 0.5;
+    master.connect(off.destination);
+    noiseBuf = null;
+    rendering = true;
+    try { api[name](); } finally { [ctx, master, noiseBuf] = saved; rendering = false; }
+    return off.startRendering();
+  };
+
+  return api;
 })();

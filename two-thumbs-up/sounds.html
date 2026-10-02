@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Two Thumbs Up: Sound Board</title>
+  <meta name="robots" content="noindex">
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      background: #0b1d2e;
+      color: #fff;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 640px; margin: 0 auto; padding: 32px 16px 64px; }
+    h1 { margin: 0 0 8px; font-size: 26px; }
+    .intro { margin: 0 0 20px; opacity: 0.8; line-height: 1.5; font-size: 15px; }
+    .top { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    button, a.btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 18px;
+      font: 600 15px system-ui, sans-serif;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .play { background: #ffd166; color: #1b1b1b; }
+    .wav { background: rgba(255, 255, 255, 0.14); color: #fff; }
+    .card {
+      background: #15304b;
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 12px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px 12px;
+      align-items: start;
+    }
+    .card.playing { outline: 2px solid #ffd166; }
+    .name { font-size: 18px; font-weight: 700; }
+    .num { opacity: 0.55; margin-right: 6px; }
+    .when { font-size: 14px; opacity: 0.85; grid-column: 1 / -1; line-height: 1.4; }
+    .recipe {
+      grid-column: 1 / -1;
+      font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+      opacity: 0.7;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+    .buttons { display: flex; gap: 8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Sound Board</h1>
+    <p class="intro">
+      Every sound in Two Thumbs Up, generated live with the Web Audio API (no audio files), using the
+      game's own sound code. All sounds go through a master gain of 0.5. Frequencies and filter cutoffs
+      glide exponentially; amplitude starts at the listed level and decays exponentially to silence over
+      the listed length. Numbers are there to make feedback easy.
+    </p>
+    <div class="top">
+      <button class="play" id="play-all">▶ Play all in order</button>
+    </div>
+    <div id="list"></div>
+  </main>
+
+  <script>
+    // Always load the latest sound code (phones cache aggressively).
+    document.write('<script src="sfx.js?v=' + Math.floor(Date.now() / 60000) + '"><\/script>');
+  </script>
+  <script>
+    const SOUNDS = [
+      ['throw', 'Throw ("thwip")', 'When you release a drag and a hand is thrown.',
+        'Noise → band-pass, Q 2, cutoff 900 → 3,200 Hz · level 0.25 · 140 ms'],
+      ['grab', 'Grab ("slap")', 'When a hand grabs a ledge (tap, auto-grab, or the opening catch).',
+        'Triangle 160 → 70 Hz, level 0.4, 80 ms + noise → band-pass, cutoff 2,000 → 800 Hz, level 0.15, 40 ms'],
+      ['fling', 'Fling ("whoosh")', 'When a stretched arm launches the body upward fast (usually after letting go with the lower hand).',
+        'Noise → band-pass, Q 0.8, cutoff 300 → 1,400 Hz · level 0.22 · 450 ms'],
+      ['pop', 'Balloon pop', 'When a hand passes through a balloon. Followed immediately by #5 or #6.',
+        'Noise → high-pass, cutoff 3,000 → 1,500 Hz, level 0.35, 50 ms + square 900 → 400 Hz, level 0.08, 80 ms'],
+      ['good', 'Power-up', 'After popping a green balloon (auto-grab, swollen, freeze, rocket).',
+        'Triangle arpeggio C5 E5 G5 (523, 659, 784 Hz) · 70 ms apart, each note 112 ms · level 0.22'],
+      ['bad', 'Power-down', 'After popping a red balloon (breakaway, flash flood, Ouch!!).',
+        'Sawtooth 220 → 110 Hz · level 0.12 · 350 ms'],
+      ['crack', 'Ledge breaks', 'When a breakaway ledge breaks after 5 s of holding.',
+        'Noise → band-pass, Q 3, cutoff 2,500 → 300 Hz · level 0.3 · 250 ms'],
+      ['gust', 'Wind gust', 'When a wind gust starts (from 275–300 m).',
+        'Noise → low-pass, cutoff 200 → 600 Hz · level 0.12 · 1.2 s'],
+      ['bird', 'Bird hit', 'When a bird knocks a thrown hand away (from 325–350 m).',
+        'Two square chirps: 1,800 → 1,200 Hz, then 1,700 → 1,100 Hz 90 ms later · level 0.06 · 70 ms each'],
+      ['scream', 'Scream', 'When you start falling with neither hand holding on.',
+        'Sawtooth 900 → 300 Hz · level 0.07 · 600 ms'],
+      ['milestone', 'Milestone', 'Every 100 m checkpoint.',
+        'Triangle arpeggio C5 E5 G5 C6 (523, 659, 784, 1,047 Hz) · 90 ms apart, each note 144 ms · level 0.22'],
+      ['fanfare', 'Fanfare', "When you pass your best height or beat a friend's challenge.",
+        'Square arpeggio C5 E5 G5 C6 G5 C6 · 100 ms apart, each note 160 ms · level 0.12'],
+      ['splash', 'Splash (game over)', 'When the water reaches you.',
+        'Noise → low-pass, cutoff 1,500 → 200 Hz, level 0.4, 700 ms + sine 300 → 80 Hz, level 0.15, 400 ms'],
+      ['test', 'Sound-on chime', 'When you turn sound back on with the 🔊 button.',
+        'Triangle arpeggio G5 C6 E6 (784, 1,047, 1,319 Hz) · 80 ms apart, each note 128 ms · level 0.3'],
+    ];
+    const LENGTH = { gust: 1.4, fanfare: 0.9, milestone: 0.6, splash: 0.9, scream: 0.8 };
+
+    const list = document.getElementById('list');
+    SOUNDS.forEach(([key, name, when, recipe], i) => {
+      const card = document.createElement('section');
+      card.className = 'card';
+      card.id = `sound-${key}`;
+      card.innerHTML = `
+        <div class="name"><span class="num">#${i + 1}</span></div>
+        <div class="buttons">
+          <button class="play">▶ Play</button>
+          <button class="wav" title="Download as WAV">⬇ WAV</button>
+        </div>
+        <div class="when"></div>
+        <div class="recipe"></div>
+        <div class="recipe level">Measuring…</div>`;
+      card.querySelector('.name').append(name);
+      card.querySelector('.when').textContent = when;
+      card.querySelector('.recipe').textContent = recipe;
+      card.querySelector('.play').addEventListener('click', () => play(key));
+      card.querySelector('.wav').addEventListener('click', () => download(key, i + 1));
+      list.append(card);
+    });
+
+    // Measure each sound's peak level and audible length from an offline render.
+    (async () => {
+      for (const [key] of SOUNDS) {
+        const buf = await sfx.render(key, 1.5);
+        const d = buf.getChannelData(0);
+        let peak = 0, last = 0;
+        for (let i = 0; i < d.length; i++) {
+          const a = Math.abs(d[i]);
+          if (a > peak) peak = a;
+          if (a > 0.001) last = i;
+        }
+        const db = peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : '-∞';
+        document.querySelector(`#sound-${key} .level`).textContent =
+          `Measured: peak ${db} dBFS · audible for ~${Math.round((last / buf.sampleRate) * 1000)} ms (above −60 dBFS)`;
+      }
+    })();
+
+    function play(key) {
+      sfx.unlock();
+      if (sfx.muted) sfx.setMuted(false);
+      // Give a freshly started audio engine a moment on the very first tap.
+      setTimeout(() => sfx[key](), sfx.state === 'running' ? 0 : 120);
+      const card = document.getElementById(`sound-${key}`);
+      card.classList.add('playing');
+      setTimeout(() => card.classList.remove('playing'), (LENGTH[key] || 0.5) * 1000);
+    }
+
+    document.getElementById('play-all').addEventListener('click', () => {
+      let t = 0;
+      for (const [key] of SOUNDS) {
+        setTimeout(() => play(key), t);
+        t += ((LENGTH[key] || 0.5) + 0.6) * 1000;
+      }
+    });
+
+    // Render offline and save as a 16-bit mono WAV.
+    async function download(key, n) {
+      const buf = await sfx.render(key, LENGTH[key] || 1.0);
+      const data = buf.getChannelData(0);
+      const out = new DataView(new ArrayBuffer(44 + data.length * 2));
+      const str = (o, s) => [...s].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+      str(0, 'RIFF'); out.setUint32(4, 36 + data.length * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+      out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true);
+      out.setUint32(24, buf.sampleRate, true); out.setUint32(28, buf.sampleRate * 2, true);
+      out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+      str(36, 'data'); out.setUint32(40, data.length * 2, true);
+      data.forEach((v, i) => out.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v)) * 0x7fff, true));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([out], { type: 'audio/wav' }));
+      a.download = `two-thumbs-up-${String(n).padStart(2, '0')}-${key}.wav`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }
+  </script>
+</body>
+</html>
