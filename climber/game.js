@@ -62,6 +62,7 @@
   const START_Y = 160;
   const DT = 1 / 120;
   const DRAG_START_PX = 12;  // thumb movement that turns a tap into a throw
+  const AIM_WINDOW_MS = 150; // ...but only this soon after touching; after that a grip is locked
   const LEFT = 0, RIGHT = 1;
   const SIDE_COLOR = ['#ff5fa8', '#ffd166']; // left: pink (reads well on the blue sky), right: yellow
 
@@ -361,7 +362,7 @@
     const i = sideOf(e.clientX);
     if (state.thumbs[i]) return; // that side already has a thumb on it
     try { canvas.setPointerCapture(e.pointerId); } catch {}
-    const thumb = { id: e.pointerId, mode: 'none', canAim: false, sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY };
+    const thumb = { id: e.pointerId, mode: 'none', canAim: false, downAt: performance.now(), sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY };
     state.thumbs[i] = thumb;
 
     const h = state.hands[i];
@@ -378,7 +379,7 @@
       // Tap to grab: only works if the hand is over a ledge right now.
       grab(i, hold);
       thumb.mode = 'grip';
-      thumb.canAim = atShoulder; // a hand at the shoulder can still turn this into a throw
+      thumb.canAim = atShoulder; // a quick flick from the shoulder can still turn this into a throw
     } else if (atShoulder) {
       thumb.mode = 'aim';
     }
@@ -392,6 +393,7 @@
     const t = state.thumbs[i];
     t.cx = e.clientX;
     t.cy = e.clientY;
+    if (t.canAim && performance.now() - t.downAt > AIM_WINDOW_MS) t.canAim = false; // grip locked in
     if (t.canAim && Math.hypot(t.cx - t.sx, t.cy - t.sy) > DRAG_START_PX) {
       // Dragging, not holding: drop the grab and aim a throw instead.
       t.canAim = false;
