@@ -17,6 +17,7 @@ window.sfx = (() => {
       master.gain.value = muted ? 0 : 0.5;
       master.connect(ctx.destination);
     }
+    playbackSession();
     if (ctx.state !== 'running') {
       ctx.resume();
       // Older iPhones only unlock audio once something actually plays inside
@@ -28,6 +29,27 @@ window.sfx = (() => {
         src.start(0);
       } catch {}
     }
+  }
+
+  // Ask iPhones to treat this like a media app ("playback"), which is the most
+  // reliable way to get Web Audio playing there. Newer iOS has an API for it;
+  // older iOS switches when an <audio> element plays, so loop a silent one.
+  let silentEl = null;
+  function playbackSession() {
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+    if (silentEl || !/iPhone|iPad|iPod/.test(navigator.userAgent)) return;
+    const rate = 8000, n = 800; // 0.1 s of silence as a WAV file
+    const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const str = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    str(36, 'data'); v.setUint32(40, n * 2, true);
+    silentEl = document.createElement('audio');
+    silentEl.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    silentEl.loop = true;
+    silentEl.setAttribute('playsinline', '');
+    silentEl.play().catch(() => { silentEl = null; });
   }
 
   // iPhones count a tap's end (not its start) as permission to play sound, so
@@ -92,6 +114,7 @@ window.sfx = (() => {
     unlock,
     get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'not started'; }, // for debugging
+    test: () => notes([784, 1047, 1319], 0.08, 'triangle', 0.3), // played when you turn sound on
     setMuted,
     throw: () => noise(0.14, 900, 3200, 0.25, 'bandpass', 2),          // thwip
     grab: () => { tone(160, 70, 0.08, 'triangle', 0.4); noise(0.04, 2000, 800, 0.15); }, // slap

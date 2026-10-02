@@ -1926,6 +1926,8 @@
     sfx.unlock();
     sfx.setMuted(!sfx.muted);
     syncMute();
+    // A quick chime confirms sound is working (once audio has started).
+    if (!sfx.muted) setTimeout(() => sfx.test(), 120);
   });
 
   // Read-only handle for debugging in the browser console.
