@@ -1,4 +1,4 @@
-// Climber — two thumbs, two hands. Outclimb the rising water.
+// Climb Guy — two thumbs, two hands. Outclimb the rising water.
 //
 // Controls (touch, two thumbs):
 //   Left half of the screen = left hand, right half = right hand.

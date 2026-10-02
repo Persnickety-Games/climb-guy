@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Two Thumbs Up: Sound Board</title>
+  <title>Climb Guy: Sound Board</title>
   <meta name="robots" content="noindex">
   <style>
     :root { color-scheme: dark; }
@@ -58,7 +58,7 @@
   <main>
     <h1>Sound Board</h1>
     <p class="intro">
-      Every sound in Two Thumbs Up, generated live with the Web Audio API (no audio files), using the
+      Every sound in Climb Guy, generated live with the Web Audio API (no audio files), using the
       game's own sound code. All sounds go through a master gain of 0.5. Frequencies and filter cutoffs
       glide exponentially; amplitude starts at the listed level and decays exponentially to silence over
       the listed length. Numbers are there to make feedback easy.
@@ -169,7 +169,7 @@
       data.forEach((v, i) => out.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v)) * 0x7fff, true));
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([out], { type: 'audio/wav' }));
-      a.download = `two-thumbs-up-${String(n).padStart(2, '0')}-${key}.wav`;
+      a.download = `climb-guy-${String(n).padStart(2, '0')}-${key}.wav`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     }

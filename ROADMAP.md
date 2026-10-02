@@ -1,4 +1,4 @@
-# Two Thumbs Up roadmap (formerly Climber)
+# Climb Guy roadmap (formerly Two Thumbs Up, originally Climber)
 
 Ideas captured for later. Nothing here is built yet unless marked done.
 
@@ -67,9 +67,9 @@ Decided against: ghost run, technique tips.
 ## Done: fun, challenge and sharing batch
 
 - Challenge links (`?beat=152&from=Troy`) with a line to beat and a celebration when you pass it.
-- Link preview card (`two-thumbs-up/og.png`) and home-screen icon.
-- Name: Two Thumbs Up.
-- Synthesized sound effects (built, then switched off for now so the game never interrupts a podcast; review them on `two-thumbs-up/sounds.html`).
+- Link preview card (`og.png`) and home-screen icon.
+- Name: Climb Guy, by Persnickety Games (formerly Two Thumbs Up).
+- Synthesized sound effects (built, then switched off for now so the game never interrupts a podcast; review them on `sounds.html`).
 - Climber personality: worried near the water, grin after a big fling, scream when falling.
 - "Your best" line, landmarks at real heights, city → clouds → dusk → space.
 - Golden checkpoint ledges and a celebration every 100 m.
