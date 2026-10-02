@@ -180,7 +180,8 @@
 
   function generateHolds() {
     while (state.holdsTop < state.cam + viewH + T.armReach + 200) {
-      const d = clamp(state.holdsTop / 8000, 0, 1); // difficulty 0..1
+      // Difficulty 0..1, ramping gently over the first 500 m climbed.
+      const d = clamp((state.holdsTop - state.baseY) / (FULL_DIFFICULTY_M * UNITS_PER_METER), 0, 1);
       const y = state.holdsTop + lerp(85, 155, d) * rand(0.75, 1.25);
       spawnRow(y, d);
       state.holdsTop = y;
@@ -190,6 +191,7 @@
   // Each row keeps at least one ledge within horizontal reach of the row below,
   // since a held hand limits how far the other can go.
   const MAX_ROW_SHIFT = 160;
+  const FULL_DIFFICULTY_M = 500; // ledges keep thinning out and shrinking until here
 
   function spawnRow(y, d) {
     const count = Math.random() < lerp(0.55, 0.15, d) ? 2 : 1;
@@ -197,7 +199,7 @@
     const row = [];
     for (let i = 0; i < count; i++) {
       const tall = Math.random() < 0.15;
-      const w = tall ? rand(16, 24) : lerp(140, 45, d) * rand(0.7, 1.3) / (count === 2 ? 1.4 : 1);
+      const w = tall ? rand(16, 24) : lerp(140, 70, d) * rand(0.7, 1.3) / (count === 2 ? 1.4 : 1);
       const h = tall ? rand(50, 90) : rand(14, 22);
       const x = rand(slotW * i + w / 2 + 6, slotW * (i + 1) - w / 2 - 6);
       row.push({
