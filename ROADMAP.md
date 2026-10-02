@@ -30,7 +30,7 @@ Balloons pop when a hand passes through them. Green balloons are power-ups. The 
 
 | Balloon | Effect |
 | --- | --- |
-| 🎯 Auto-grab | For 10 s, a thrown hand grabs the highest ledge on its arc and holds on by itself. Touch that side to take over the grip: lift to let go, or drag to throw. |
+| 🎯 Auto-grab | For 10 s, no tapping: a thrown hand grabs the highest ledge on its arc and holds on by itself, and the other hand lets go once it has. Hands can only let go by grabbing somewhere new with the other hand. A hand still auto-held when the timer ends stays held until the other hand grabs a new ledge. |
 | 🔍 Swollen | Every ledge on screen grows 25%, and ledges that scroll on in the next 10 s arrive enlarged. |
 | ❄️ Freeze | The water stops rising for 10 s and turns to ice. |
 | 🚀 Rocket (rare) | Blast off 100 m, then drop in from the top of the screen and catch a ledge. |

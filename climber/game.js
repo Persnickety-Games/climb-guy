@@ -329,7 +329,7 @@
   const ROCKET_SPEED = 1400;
 
   const POWERS = {
-    autoGrab:      { good: true,  weight: 3,   icon: '🎯', name: 'Auto-grab',     text: 'Throws grab the highest ledge they hit' },
+    autoGrab:      { good: true,  weight: 3,   icon: '🎯', name: 'Auto-grab',     text: 'No tapping: throws grab and hold for you' },
     swollen:       { good: true,  weight: 3,   icon: '🔍', name: 'Swollen',       text: 'Ledges grow 25% bigger' },
     freeze:        { good: true,  weight: 3,   icon: '❄️', name: 'Freeze',        text: 'The water stops rising' },
     rocket:        { good: true,  weight: 0.5, icon: '🚀', name: 'Rocket',        text: `Blast off ${ROCKET_M} m, then catch a ledge` },
@@ -386,6 +386,15 @@
     if (kind === 'rocket') startRocket();
     else if (kind === 'ouch') state.effects[`ouch:${hand}`] = state.time + OUCH_SECS;
     else state.effects[kind] = state.time + EFFECT_SECS;
+    if (kind === 'autoGrab') {
+      // Hands already holding on now hold by themselves; thumbs are free.
+      state.hands.forEach((h, i) => {
+        if (h.state !== 'held') return;
+        h.autoHeld = true;
+        const t = state.thumbs[i];
+        if (t) { t.mode = 'none'; t.canAim = false; }
+      });
+    }
     if (kind === 'swollen') {
       // Everything already on screen grows now; new arrivals grow as they appear.
       for (const o of state.holds) if (o.seen) swell(o);
@@ -496,18 +505,30 @@
     state.thumbs[i] = thumb;
 
     const h = state.hands[i];
+    const autoGrab = active('autoGrab');
     if (h.state === 'held' && h.autoHeld) {
-      // An auto-grabbed hand: thumb down takes over the grip (lift to let go, drag to throw).
+      // During Auto-grab a holding hand can't be let go of. Afterwards, a thumb
+      // on a still auto-held hand takes over the grip (lift to let go).
+      if (autoGrab) {
+        // ...unless the other hand is holding too: then this one lets go and can be thrown.
+        if (state.hands[1 - i].state !== 'held') return;
+        letGo(i);
+        thumb.mode = 'aim';
+        return;
+      }
       h.autoHeld = false;
       thumb.mode = 'grip';
       thumb.canAim = true;
       return;
     }
     const atShoulder = h.state === 'idle' || h.state === 'returning';
-    const hold = hurt(i) ? null : holdUnder(h);
+    // During Auto-grab, taps only throw a resting hand, so a stray tap can't
+    // grab with it (which would make the other hand let go).
+    const hold = hurt(i) || (autoGrab && atShoulder) ? null : holdUnder(h);
     if (hold) {
       // Tap to grab: only works if the hand is over a ledge right now.
       grab(i, hold);
+      if (h.autoHeld) return; // Auto-grab holds on for you
       thumb.mode = 'grip';
       thumb.canAim = atShoulder; // a quick flick from the shoulder can still turn this into a throw
     } else if (atShoulder) {
@@ -554,14 +575,22 @@
   canvas.addEventListener('pointercancel', onUp);
   canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-  function grab(i, hold) {
+  function grab(i, hold, auto = false) {
     const h = state.hands[i];
     h.state = 'held';
     h.x = clamp(h.x, hold.x - hold.w / 2, hold.x + hold.w / 2);
     h.y = clamp(h.y, hold.y - hold.h / 2, hold.y + hold.h / 2);
     h.vx = h.vy = 0;
     h.hold = hold;
-    h.autoHeld = false;
+    // Auto-grab: holding is automatic, and the other hand lets go once this one
+    // has hold of something new. A hand left auto-held after the timer ends also
+    // lets go when the other hand grabs.
+    h.autoHeld = auto || active('autoGrab');
+    const j = 1 - i, other = state.hands[j];
+    if (other.state === 'held' && (other.autoHeld || h.autoHeld)) {
+      letGo(j);
+      if (state.thumbs[j]) { state.thumbs[j].mode = 'none'; state.thumbs[j].canAim = false; }
+    }
     state.dropping = false;
     startPlaying();
   }
@@ -678,8 +707,7 @@
         const target = h.autoTarget;
         const o = target && !hurt(i) && holdUnder(h);
         if (o && (o === target.hold || h.t >= target.t)) {
-          grab(i, o); // auto-grab holds on by itself until that thumb touches down
-          h.autoHeld = true;
+          grab(i, o, true);
           h.autoTarget = null;
         } else if (handFlightOver(h)) h.state = 'returning';
       } else if (h.state === 'returning') {
