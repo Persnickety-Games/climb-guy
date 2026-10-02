@@ -6,10 +6,22 @@ window.sfx = (() => {
   let ctx = null;
   let master = null;
   let muted = false;
+  let generation = 0;     // how many audio engines we've started (for debugging)
+  let needsFresh = false; // set when the page was hidden; see below
   try { muted = localStorage.getItem('climber.muted') === '1'; } catch {}
 
   function unlock() {
+    // After the page is hidden (another app played audio, a call, a tab switch),
+    // iPhones can leave the old audio engine silent even though it says it's
+    // running. So the first tap after coming back starts a fresh one.
+    if (needsFresh && ctx) {
+      try { ctx.close(); } catch {}
+      ctx = null;
+      noiseBuf = null;
+    }
+    needsFresh = false;
     if (!ctx) {
+      generation++;
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       ctx = new AC();
@@ -37,7 +49,11 @@ window.sfx = (() => {
   let silentEl = null;
   function playbackSession() {
     try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
-    if (silentEl || !/iPhone|iPad|iPod/.test(navigator.userAgent)) return;
+    if (silentEl) {
+      if (silentEl.paused) silentEl.play().catch(() => {});
+      return;
+    }
+    if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) return;
     const rate = 8000, n = 800; // 0.1 s of silence as a WAV file
     const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
     const str = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
@@ -55,8 +71,11 @@ window.sfx = (() => {
   // iPhones count a tap's end (not its start) as permission to play sound, so
   // try on every kind of tap until audio is running.
   for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
-    document.addEventListener(type, () => { if (!ctx || ctx.state !== 'running') unlock(); }, { capture: true, passive: true });
+    document.addEventListener(type, () => { if (!ctx || ctx.state !== 'running' || needsFresh) unlock(); }, { capture: true, passive: true });
   }
+  const markHidden = () => { if (document.hidden) needsFresh = true; };
+  document.addEventListener('visibilitychange', markHidden);
+  window.addEventListener('pagehide', () => { needsFresh = true; });
 
   function setMuted(m) {
     muted = m;
@@ -114,6 +133,7 @@ window.sfx = (() => {
     unlock,
     get muted() { return muted; },
     get state() { return ctx ? ctx.state : 'not started'; }, // for debugging
+    get generation() { return generation; },
     test: () => notes([784, 1047, 1319], 0.08, 'triangle', 0.3), // played when you turn sound on
     setMuted,
     throw: () => noise(0.14, 900, 3200, 0.25, 'bandpass', 2),          // thwip
