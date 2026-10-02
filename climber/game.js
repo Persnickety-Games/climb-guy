@@ -6,6 +6,8 @@
 //   - Tap while a hand is over a ledge to grab it, and KEEP HOLDING.
 //   - Lift that thumb and the hand lets go.
 // A held arm is elastic: let go with the lower hand and the upper arm flings you up.
+// Balloons pop when a hand passes through them: green = power-up, red = power-down.
+// Add ?powerups to the URL to get balloons from the start (for testing).
 //
 // World units: the play area is 400 units wide; y points UP (height).
 
@@ -112,6 +114,11 @@
       ],
       thumbs: [null, null],    // per side: { id, mode: aim|grip|none, sx, sy, cx, cy }
       holds: [startHold],
+      balloons: [],            // { kind, x, y, phase, popped }
+      effects: {},             // power name -> game time it wears off
+      toast: null,             // { kind, at } — the last power popped
+      rocket: null,            // { toY } while blasting off
+      dropping: true,          // slow fall until a hand catches something
       holdsTop: START_Y,
       water: -120,
       cam,
@@ -153,10 +160,12 @@
     const h = state.hands[i];
     if (h.state !== 'held') return;
     h.state = 'returning';
+    h.hold = null;
+    h.autoHeld = false;
   }
 
   function holdUnder(h) {
-    return state.holds.find(o => circleHitsRect(h.x, h.y, HAND_R, o)) || null;
+    return state.holds.find(o => !o.broken && circleHitsRect(h.x, h.y, HAND_R, o)) || null;
   }
 
   // ---------- Level generation ----------
@@ -201,6 +210,124 @@
     }
     state.holds.push(...row);
     state.lastRow = row;
+    maybeSpawnBalloon(y);
+  }
+
+  // ---------- Power-ups ----------
+  const EARLY = new URLSearchParams(location.search).has('powerups');
+  const GOOD_FROM_M = EARLY ? 0 : 100;   // power-ups start appearing here
+  const BAD_FROM_M = EARLY ? 5 : 300;    // power-downs join in here
+  const BALLOON_CHANCE = EARLY ? 0.5 : 0.15; // per row of ledges
+  const BALLOON_R = 18;
+  const EFFECT_SECS = 10;
+  const BREAK_SECS = 3;                  // hold time before a breakaway ledge crumbles
+  const ROCKET_M = 100;
+  const ROCKET_SPEED = 1400;
+
+  const POWERS = {
+    autoGrab:      { good: true,  weight: 3,   icon: '🎯', name: 'Auto-grab',     text: 'Throws grab the highest ledge they hit' },
+    swollen:       { good: true,  weight: 3,   icon: '🔍', name: 'Swollen',       text: 'New ledges are 25% bigger' },
+    freeze:        { good: true,  weight: 3,   icon: '❄️', name: 'Freeze',        text: 'The water stops rising' },
+    rocket:        { good: true,  weight: 0.5, icon: '🚀', name: 'Rocket',        text: `Blast off ${ROCKET_M} m, then catch a ledge` },
+    butterfingers: { good: false, weight: 2,   icon: '🧈', name: 'Butterfingers', text: 'Both hands let go!' },
+    breakaway:     { good: false, weight: 2,   icon: '💥', name: 'Breakaway',     text: `New ledges break after ${BREAK_SECS}s of holding` },
+    flood:         { good: false, weight: 2,   icon: '🌊', name: 'Flash flood',   text: 'The water rises 25% faster' },
+  };
+
+  const active = (kind) => (state.effects[kind] || 0) > state.time;
+
+  function maybeSpawnBalloon(rowY) {
+    const m = (rowY - state.baseY) / UNITS_PER_METER;
+    if (m < GOOD_FROM_M || Math.random() > BALLOON_CHANCE) return;
+    const pool = Object.entries(POWERS).filter(([, p]) => p.good || m >= BAD_FROM_M);
+    let r = Math.random() * pool.reduce((sum, [, p]) => sum + p.weight, 0);
+    const [kind] = pool.find(([, p]) => (r -= p.weight) < 0) || pool[0];
+    state.balloons.push({ kind, x: rand(40, WORLD_W - 40), y: rowY + rand(40, 70), phase: rand(0, 6.3), popped: 0 });
+  }
+
+  // Balloons bob gently.
+  function balloonPos(b) {
+    return {
+      x: b.x + Math.sin(state.time * 1.5 + b.phase) * 6,
+      y: b.y + Math.sin(state.time * 2.1 + b.phase) * 4,
+    };
+  }
+
+  function applyPower(kind) {
+    state.toast = { kind, at: state.time };
+    if (kind === 'butterfingers') dropEverything();
+    else if (kind === 'rocket') startRocket();
+    else state.effects[kind] = state.time + EFFECT_SECS;
+  }
+
+  // Both hands let go, and thumbs already down stop doing anything until lifted.
+  function dropEverything() {
+    state.hands.forEach((h, i) => {
+      letGo(i);
+      const t = state.thumbs[i];
+      if (t) { t.mode = 'none'; t.canAim = false; }
+    });
+  }
+
+  function startRocket() {
+    dropEverything();
+    state.hands.forEach(h => { if (h.state === 'flying') h.state = 'returning'; });
+    state.rocket = { toY: state.body.y + ROCKET_M * UNITS_PER_METER };
+    state.body.vx = 0;
+  }
+
+  // Auto-grab target: the highest ledge the hand will touch along its arc.
+  function autoGrabTarget(i, v) {
+    const s = shoulder(i);
+    const h = { x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y };
+    let best = null;
+    for (let n = 0; n < 600 && !handFlightOver(h); n++) {
+      advanceHand(h, s, DT);
+      const o = holdUnder(h);
+      if (o && (!best || o.y > best.hold.y)) best = { hold: o, t: h.t };
+    }
+    return best;
+  }
+
+  // Ledges pick up Swollen / Breakaway when they first scroll onto the screen.
+  function markNewLedges() {
+    const top = state.cam + viewH;
+    for (const o of state.holds) {
+      if (o.seen || o.y - o.h / 2 > top) continue;
+      o.seen = true;
+      if (active('swollen')) { o.w *= 1.25; o.h *= 1.25; o.swollen = true; }
+      if (active('breakaway')) { o.breakable = true; o.heldFor = 0; }
+    }
+  }
+
+  function updateLedges(dt) {
+    for (const o of state.holds) {
+      if (o.broken) {
+        o.vy -= T.bodyGravity * dt;
+        o.y += o.vy * dt;
+        continue;
+      }
+      if (!o.breakable) continue;
+      const holders = state.hands.filter(h => h.state === 'held' && h.hold === o);
+      if (!holders.length) continue;
+      o.heldFor += dt; // only counts while something is holding on
+      if (o.heldFor >= BREAK_SECS) {
+        o.broken = true;
+        o.vy = 0;
+        state.hands.forEach((h, i) => { if (h.hold === o) letGo(i); });
+      }
+    }
+  }
+
+  function popBalloons() {
+    for (const b of state.balloons) {
+      if (b.popped) continue;
+      const p = balloonPos(b);
+      if (state.hands.some(h => Math.hypot(h.x - p.x, h.y - p.y) < BALLOON_R + HAND_R)) {
+        b.popped = state.time;
+        applyPower(b.kind);
+      }
+    }
   }
 
   // ---------- Input: each half of the screen drives one hand ----------
@@ -215,6 +342,7 @@
       if (state.time - state.overAt > 0.6) newGame();
       return;
     }
+    if (state.rocket) return;
     const i = sideOf(e.clientX);
     if (state.thumbs[i]) return; // that side already has a thumb on it
     try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -222,6 +350,13 @@
     state.thumbs[i] = thumb;
 
     const h = state.hands[i];
+    if (h.state === 'held' && h.autoHeld) {
+      // An auto-grabbed hand: thumb down takes over the grip (lift to let go, drag to throw).
+      h.autoHeld = false;
+      thumb.mode = 'grip';
+      thumb.canAim = true;
+      return;
+    }
     const atShoulder = h.state === 'idle' || h.state === 'returning';
     const hold = holdUnder(h);
     if (hold) {
@@ -247,6 +382,7 @@
       t.canAim = false;
       t.mode = 'aim';
       state.hands[i].state = 'idle';
+      state.hands[i].hold = null;
     }
   }
 
@@ -277,6 +413,9 @@
     h.x = clamp(h.x, hold.x - hold.w / 2, hold.x + hold.w / 2);
     h.y = clamp(h.y, hold.y - hold.h / 2, hold.y + hold.h / 2);
     h.vx = h.vy = 0;
+    h.hold = hold;
+    h.autoHeld = false;
+    state.dropping = false;
     startPlaying();
   }
 
@@ -296,6 +435,7 @@
     if (h.state !== 'idle' && h.state !== 'returning') return;
     const s = shoulder(i);
     Object.assign(h, { state: 'flying', x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y });
+    h.autoTarget = active('autoGrab') ? autoGrabTarget(i, v) : null;
     startPlaying();
   }
 
@@ -325,6 +465,25 @@
 
   function step(dt) {
     const { body, hands } = state;
+    markNewLedges();
+    updateLedges(dt);
+
+    if (state.rocket) {
+      body.vx = 0;
+      body.vy = ROCKET_SPEED;
+      body.y += body.vy * dt;
+      if (body.y >= state.rocket.toY) {
+        // Burn-out: drop in from the top of the screen, like the start.
+        state.rocket = null;
+        state.dropping = true;
+        body.vy = 0;
+      }
+      hands.forEach((h, i) => { if (h.state !== 'flying') { h.state = 'idle'; placeIdle(i); } });
+      state.maxY = Math.max(state.maxY, body.y);
+      stepWater(dt);
+      state.cam += (body.y - viewH * 0.6 - state.cam) * (1 - Math.exp(-8 * dt)); // lags to ~80% up the screen
+      return;
+    }
 
     // Body: gravity + an elastic pull from every held hand.
     let ax = 0, ay = -T.bodyGravity;
@@ -344,7 +503,7 @@
     body.vy += ay * dt;
     body.vx *= Math.exp(-0.4 * dt); // light air drag
     body.vy *= Math.exp(-0.4 * dt);
-    if (state.phase === 'ready') body.vy = Math.max(body.vy, -T.introFall);
+    if (state.dropping) body.vy = Math.max(body.vy, -T.introFall);
     body.x += body.vx * dt;
     body.y += body.vy * dt;
 
@@ -369,7 +528,13 @@
       const s = shoulder(i);
       if (h.state === 'flying') {
         advanceHand(h, s, dt);
-        if (handFlightOver(h)) h.state = 'returning';
+        const target = h.autoTarget;
+        const o = target && holdUnder(h);
+        if (o && (o === target.hold || h.t >= target.t)) {
+          grab(i, o); // auto-grab holds on by itself until that thumb touches down
+          h.autoHeld = true;
+          h.autoTarget = null;
+        } else if (handFlightOver(h)) h.state = 'returning';
       } else if (h.state === 'returning') {
         const k = 1 - Math.exp(-22 * dt);
         h.x += (s.x - h.x) * k;
@@ -379,23 +544,28 @@
       if (h.state === 'idle') placeIdle(i);
     });
 
-    if (state.phase === 'playing') state.maxY = Math.max(state.maxY, body.y);
-
-    // Water.
-    if (state.phase === 'ready' && state.water >= body.y) gameOver(); // missed every ledge
     if (state.phase === 'playing') {
+      state.maxY = Math.max(state.maxY, body.y);
+      popBalloons();
+    }
+    stepWater(dt);
+
+    // Camera follows the body, never dipping far below the water.
+    // While dropping in it holds still until the climber nears the bottom.
+    let target = Math.max(body.y - viewH * 0.4, state.water - 60);
+    if (state.dropping) target = Math.max(Math.min(state.cam, body.y - viewH * 0.25), state.water - 60);
+    state.cam += (target - state.cam) * (1 - Math.exp(-4 * dt));
+  }
+
+  function stepWater(dt) {
+    if (state.phase === 'playing' && !active('freeze')) {
       const climbed = Math.max(0, state.maxY - state.baseY);
       let speed = T.waterSpeed + T.waterRamp * climbed / 1000;
       if (state.water < state.cam - 200) speed *= 4; // catch up if you're far ahead
+      if (active('flood')) speed *= 1.25;
       state.water += speed * dt;
-      if (state.water >= body.y) gameOver();
     }
-
-    // Camera follows the body, never dipping far below the water.
-    // During the opening drop it holds still until the climber nears the bottom.
-    let target = Math.max(body.y - viewH * 0.4, state.water - 60);
-    if (state.phase === 'ready') target = Math.max(Math.min(state.cam, body.y - viewH * 0.25), state.water - 60);
-    state.cam += (target - state.cam) * (1 - Math.exp(-4 * dt));
+    if (state.water >= state.body.y) gameOver();
   }
 
   function gameOver() {
@@ -467,13 +637,10 @@
 
     for (const h of state.holds) {
       if (h.y + h.h < state.cam - 50 || h.y - h.h > state.cam + viewH + 50) continue;
-      ctx.fillStyle = h.color;
-      roundRect(h.x - h.w / 2, h.y - h.h / 2, h.w, h.h, 4);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.12)';
-      ctx.fillRect(h.x - h.w / 2 + 2, h.y + h.h / 2 - 4, h.w - 4, 2);
+      drawLedge(h);
     }
 
+    drawBalloons();
     drawAimArcs();
     drawClimber();
     drawWater();
@@ -482,6 +649,75 @@
     drawOffscreenHands();
     drawThumbs();
     drawHud();
+  }
+
+  function drawLedge(h) {
+    // A breakaway ledge shakes harder the longer it's held.
+    const strain = h.breakable && !h.broken ? h.heldFor / BREAK_SECS : 0;
+    const x = h.x + (strain ? Math.sin(state.time * 70) * strain * 2.5 : 0);
+    ctx.globalAlpha = h.broken ? 0.6 : 1;
+    ctx.fillStyle = h.color;
+    roundRect(x - h.w / 2, h.y - h.h / 2, h.w, h.h, 4);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(x - h.w / 2 + 2, h.y + h.h / 2 - 4, h.w - 4, 2);
+    if (h.swollen) {
+      ctx.strokeStyle = 'rgba(160,255,190,0.7)';
+      ctx.lineWidth = 2;
+      roundRect(x - h.w / 2, h.y - h.h / 2, h.w, h.h, 4);
+      ctx.stroke();
+    }
+    if (h.breakable) {
+      // Zigzag crack, reddening with strain.
+      ctx.strokeStyle = `rgba(${Math.round(lerp(30, 230, strain))},20,20,0.8)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      const n = Math.max(3, Math.round(h.w / 12));
+      for (let k = 0; k <= n; k++) {
+        const px = x - h.w / 2 + (h.w * k) / n;
+        const py = h.y + (k % 2 ? 1 : -1) * h.h * 0.25;
+        k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Balloons draw in screen space so their icons aren't flipped.
+  function drawBalloons() {
+    screenTransform();
+    for (const b of state.balloons) {
+      const p = balloonPos(b);
+      const sx = ox + p.x * scale, sy = cssH - (p.y - state.cam) * scale;
+      const r = BALLOON_R * scale;
+      if (sy < -r * 2 || sy > cssH + r * 3) continue;
+      const good = POWERS[b.kind].good;
+      if (b.popped) {
+        const k = (state.time - b.popped) / 0.4;
+        ctx.strokeStyle = good ? '#3ddc84' : '#ff5a5a';
+        ctx.globalAlpha = 1 - k;
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(sx, sy, r * (1 + k * 1.5), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+        continue;
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(sx, sy + r); ctx.quadraticCurveTo(sx + 5, sy + r * 1.6, sx, sy + r * 2.3); ctx.stroke();
+      ctx.fillStyle = good ? '#2fbf6e' : '#e04848';
+      ctx.beginPath(); ctx.ellipse(sx, sy, r * 0.9, r, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(sx - 4, sy + r + 4); ctx.lineTo(sx + 4, sy + r + 4); ctx.lineTo(sx, sy + r - 1); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.beginPath(); ctx.ellipse(sx - r * 0.35, sy - r * 0.4, r * 0.18, r * 0.3, -0.5, 0, Math.PI * 2); ctx.fill();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `${Math.round(r * 1.05)}px system-ui, sans-serif`;
+      ctx.fillStyle = '#fff';
+      ctx.fillText(POWERS[b.kind].icon, sx, sy + 1);
+      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = 'left';
+    }
+    worldTransform();
   }
 
   // Faint dotted arc for a hand being aimed (respecting arm reach).
@@ -501,6 +737,14 @@
         ctx.beginPath(); ctx.arc(h.x, h.y, 2.8, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
+      const target = active('autoGrab') && autoGrabTarget(i, v);
+      if (target) {
+        const o = target.hold;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2.5;
+        roundRect(o.x - o.w / 2 - 3, o.y - o.h / 2 - 3, o.w + 6, o.h + 6, 6);
+        ctx.stroke();
+      }
     });
   }
 
@@ -515,6 +759,24 @@
       ctx.lineWidth = clamp(8 - len * 0.02, 2.5, 7);
       ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(h.x, h.y); ctx.stroke();
     });
+
+    if (state.rocket) {
+      const flicker = 1 + Math.sin(state.time * 60) * 0.15;
+      ctx.fillStyle = '#ffb347';
+      ctx.beginPath();
+      ctx.moveTo(body.x - 10, body.y - 10);
+      ctx.lineTo(body.x + 10, body.y - 10);
+      ctx.lineTo(body.x, body.y - 10 - 45 * flicker);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fff3b0';
+      ctx.beginPath();
+      ctx.moveTo(body.x - 5, body.y - 10);
+      ctx.lineTo(body.x + 5, body.y - 10);
+      ctx.lineTo(body.x, body.y - 10 - 22 * flicker);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     ctx.fillStyle = '#e8873a';
     ctx.beginPath(); ctx.arc(body.x, body.y, BODY_R, 0, Math.PI * 2); ctx.fill();
@@ -546,15 +808,31 @@
     const top = state.water;
     const bottom = state.cam - 50;
     if (top < bottom) return;
-    ctx.fillStyle = 'rgba(30, 110, 200, 0.72)';
+    const frozen = active('freeze'), flood = active('flood');
+    const wave = frozen ? 0 : flood ? 5 : 3;
+    const waveSpeed = flood ? 6 : 3;
+    ctx.fillStyle = frozen ? 'rgba(200, 235, 255, 0.88)' : flood ? 'rgba(20, 80, 160, 0.8)' : 'rgba(30, 110, 200, 0.72)';
     ctx.beginPath();
     ctx.moveTo(-500, bottom);
     for (let x = -500; x <= WORLD_W + 500; x += 10) {
-      ctx.lineTo(x, top + Math.sin(x * 0.05 + state.time * 3) * 3);
+      ctx.lineTo(x, top + Math.sin(x * 0.05 + state.time * waveSpeed) * wave);
     }
     ctx.lineTo(WORLD_W + 500, bottom);
     ctx.closePath();
     ctx.fill();
+    if (frozen) {
+      // Ice: a bright surface line and a few cracks.
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-500, top); ctx.lineTo(WORLD_W + 500, top); ctx.stroke();
+      ctx.strokeStyle = 'rgba(120,180,220,0.6)';
+      ctx.lineWidth = 1.5;
+      for (const cx of [60, 170, 290, 360]) {
+        ctx.beginPath();
+        ctx.moveTo(cx, top); ctx.lineTo(cx + 12, top - 14); ctx.lineTo(cx + 4, top - 26); ctx.lineTo(cx + 18, top - 40);
+        ctx.stroke();
+      }
+    }
   }
 
   // A hand thrown above the screen shows as an arrow on the top edge.
@@ -610,6 +888,8 @@
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.fillText(`Best ${state.best} m`, ox + 14, top + 46);
+    drawEffects(top + 60);
+    drawToast();
 
     ctx.textAlign = 'center';
     const cx = ox + (WORLD_W * scale) / 2;
@@ -644,6 +924,55 @@
     ctx.textAlign = 'left';
   }
 
+  // Active timed effects: icon + a shrinking bar, under the score.
+  function drawEffects(y) {
+    for (const [kind, until] of Object.entries(state.effects)) {
+      const left = until - state.time;
+      if (left <= 0) continue;
+      const p = POWERS[kind];
+      ctx.font = '16px system-ui, sans-serif';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(p.icon, ox + 14, y + 16);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(ox + 40, y + 7, 60, 6);
+      ctx.fillStyle = p.good ? '#3ddc84' : '#ff6b6b';
+      ctx.fillRect(ox + 40, y + 7, 60 * (left / EFFECT_SECS), 6);
+      y += 24;
+    }
+  }
+
+  // What the last balloon did: a small note in the top-right corner that fades out.
+  function drawToast() {
+    const t = state.toast;
+    if (!t) return;
+    const age = state.time - t.at;
+    if (age > 3.5) return;
+    const p = POWERS[t.kind];
+    const right = ox + WORLD_W * scale - 12;
+    const maxW = Math.min(300, WORLD_W * scale - 150);
+    let size = 12;
+    ctx.font = `${size}px system-ui, sans-serif`;
+    while (size > 9 && ctx.measureText(p.text).width > maxW - 20) {
+      size -= 0.5;
+      ctx.font = `${size}px system-ui, sans-serif`;
+    }
+    const w = Math.min(maxW, Math.max(ctx.measureText(p.text).width, 110) + 20);
+    const y = 66;
+    ctx.globalAlpha = Math.min(1, age * 5, (3.5 - age) * 1.5);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    roundRect(right - w, y, w, 42, 10);
+    ctx.fill();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = p.good ? '#7dffb0' : '#ff9a9a';
+    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.fillText(`${p.icon} ${p.name}`, right - w / 2, y + 17);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = `${size}px system-ui, sans-serif`;
+    ctx.fillText(p.text, right - w / 2, y + 34);
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+  }
+
   // ---------- Loop ----------
   let last = performance.now();
   let acc = 0;
@@ -662,6 +991,7 @@
         acc -= DT;
       }
       state.holds = state.holds.filter(h => h.y > state.water - 300);
+      state.balloons = state.balloons.filter(b => b.y > state.water - 100 && !(b.popped && state.time - b.popped > 0.4));
     }
     render();
     requestAnimationFrame(frame);
@@ -702,7 +1032,7 @@
   });
 
   // Read-only handle for debugging in the browser console.
-  window.climber = { get state() { return state; }, T };
+  window.climber = { get state() { return state; }, T, power: (kind) => applyPower(kind) };
 
   newGame();
   requestAnimationFrame(frame);
