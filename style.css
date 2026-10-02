@@ -34,6 +34,34 @@ canvas {
 
 #menu-btn { right: 58px; font-size: 20px; }
 
+/* Start screen: the game waits, blurred, until the first tap. */
+#start {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 16px;
+  text-align: center;
+  color: #fff;
+  background: rgba(11, 29, 46, 0.35);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  touch-action: none;
+  cursor: pointer;
+  transition: opacity 0.4s ease;
+}
+#start.gone { opacity: 0; pointer-events: none; }
+#start[hidden] { display: none; }
+#start h1 { margin: 0; font-size: 44px; font-weight: 800; letter-spacing: -0.5px; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35); }
+#start-line { margin: 6px 0 0; font-size: 16px; font-weight: 600; color: #7df9ff; min-height: 1em; }
+#start-line:empty { display: none; }
+.start-tap { margin: 28px 0 0; font-size: 18px; font-weight: 700; animation: start-pulse 1.4s ease-in-out infinite; }
+.start-by { position: absolute; bottom: max(18px, env(safe-area-inset-bottom)); margin: 0; font-size: 13px; opacity: 0.7; }
+@keyframes start-pulse { 50% { opacity: 0.45; } }
+
 #tune {
   position: fixed;
   top: 60px;

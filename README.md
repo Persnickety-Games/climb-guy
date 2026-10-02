@@ -2,7 +2,7 @@
 
 A browser climbing game by Persnickety Games. Plain HTML/CSS/JS with no build step, hosted on GitHub Pages.
 
-Mobile, two thumbs, two hands. The left half of the screen controls the left hand and the right half controls the right.
+Mobile, two thumbs, two hands. A blurred start screen waits for a tap, then the climber drops in. The left half of the screen controls the left hand and the right half controls the right.
 
 - Drag down and release to throw a free hand.
 - Tap while the hand is over a ledge to grab it, and keep your thumb down to hold on. Lift it and the hand lets go.

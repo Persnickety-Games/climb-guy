@@ -1983,7 +1983,7 @@
   function frame(now) {
     const elapsed = Math.min(0.1, (now - last) / 1000);
     last = now;
-    if (tunePanel.hidden && !Menu.isOpen()) { // paused while the tuning panel or menu is open
+    if (started && tunePanel.hidden && !Menu.isOpen()) { // paused on the start screen and while the tuning panel or menu is open
       acc += elapsed;
       while (acc >= DT) {
         state.time += DT;
@@ -2036,6 +2036,24 @@
     store.set('climber3.tuning', T);
     buildTuning();
   });
+
+  // ---------- Start screen ----------
+  // On first load the game waits, blurred, until a tap; then the climber drops in.
+  let started = false;
+  const startEl = document.getElementById('start');
+  if (CHALLENGE) document.getElementById('start-line').textContent = `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${CHALLENGE.m} m!`;
+  else if (Progress.best > 0) document.getElementById('start-line').textContent = `Your best: ${Progress.best} m`;
+  function begin(e) {
+    if (started) return;
+    e.preventDefault();
+    started = true;
+    last = performance.now();
+    startEl.classList.add('gone');
+    setTimeout(() => { startEl.hidden = true; }, 450);
+  }
+  startEl.addEventListener('pointerdown', begin);
+  startEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') begin(e); });
+  startEl.focus();
 
   // ---------- Menu (stats, passport, badges, customize) ----------
   document.getElementById('menu-btn').addEventListener('click', () => Menu.open());
