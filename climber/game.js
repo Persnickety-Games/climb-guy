@@ -1190,13 +1190,19 @@
   const overActions = document.getElementById('over-actions');
   const shareStatus = document.getElementById('share-status');
 
-  // Pick a random absurd unit that gives a fun-sized number.
+  // Pick a random absurd unit that gives a fun-sized number, skipping the
+  // last few this device has seen so it feels different every time.
+  const RECENT_UNITS = 30;
+
   function pickUnit(meters) {
     const units = window.CLIMBER_UNITS || [];
     if (!units.length) return null;
     const fits = units.filter(([, , h]) => meters / h >= 1.5 && meters / h <= 50000);
-    const pool = fits.length ? fits : units;
+    const recent = store.get('climber.recentUnits', []);
+    const fresh = fits.filter(([one]) => !recent.includes(one));
+    const pool = fresh.length ? fresh : fits.length ? fits : units;
     const [one, many, h] = pool[(Math.random() * pool.length) | 0];
+    store.set('climber.recentUnits', [one, ...recent.filter(r => r !== one)].slice(0, RECENT_UNITS));
     return { one, many, count: meters / h };
   }
 
