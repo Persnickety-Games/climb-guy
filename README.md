@@ -37,4 +37,4 @@ python3 -m http.server 8000
 
 ## Deploy
 
-Settings → Pages → Source: "Deploy from a branch", Branch: `main`, folder `/ (root)`.
+Settings → Pages → Source: "Deploy from a branch", Branch: `main`, folder `/ (root)`. Live at https://climbguy.xyz (custom domain set by the `CNAME` file).
