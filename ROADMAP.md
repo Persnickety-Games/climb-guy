@@ -34,7 +34,7 @@ Balloons pop when a hand passes through them. Green balloons are power-ups. The 
 | 🔍 Swollen | Every ledge on screen grows 25%, and ledges that scroll on in the next 10 s arrive enlarged. |
 | ❄️ Freeze | The water stops rising for 10 s and turns to ice. |
 | 🚀 Rocket (rare) | Blast off 100 m, then drop in from the top of the screen and catch a ledge. |
-| 💥 Breakaway | Ledges that scroll onto the screen in the next 10 s break after 3 s of total hold time. |
+| 💥 Breakaway | Ledges that scroll onto the screen in the next 10 s break after 5 s of total hold time. |
 | 🌊 Flash flood | The water rises 25% faster for 10 s. |
 | 🤕 Ouch!! | The hand that popped it can't grab for 5 s. It can still be thrown, and it glows red while hurt. |
 

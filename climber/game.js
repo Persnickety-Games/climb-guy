@@ -324,7 +324,7 @@
   const BALLOON_R = 18;
   const EFFECT_SECS = 10;
   const OUCH_SECS = 5;
-  const BREAK_SECS = 3;                  // hold time before a breakaway ledge crumbles
+  const BREAK_SECS = 5;                  // hold time before a breakaway ledge crumbles
   const ROCKET_M = 100;
   const ROCKET_SPEED = 1400;
 
