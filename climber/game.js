@@ -333,7 +333,6 @@
     swollen:       { good: true,  weight: 3,   icon: '🔍', name: 'Swollen',       text: 'Ledges grow 25% bigger' },
     freeze:        { good: true,  weight: 3,   icon: '❄️', name: 'Freeze',        text: 'The water stops rising' },
     rocket:        { good: true,  weight: 0.5, icon: '🚀', name: 'Rocket',        text: `Blast off ${ROCKET_M} m, then catch a ledge` },
-    butterfingers: { good: false, weight: 2,   icon: '🧈', name: 'Butterfingers', text: 'Both hands let go!' },
     breakaway:     { good: false, weight: 2,   icon: '💥', name: 'Breakaway',     text: `New ledges break after ${BREAK_SECS}s of holding` },
     flood:         { good: false, weight: 2,   icon: '🌊', name: 'Flash flood',   text: 'The water rises 25% faster' },
     ouch:          { good: false, weight: 2,   icon: '🤕', name: 'Ouch!!',        text: `That hurt! That hand can't grab for ${OUCH_SECS}s`, secs: OUCH_SECS },
@@ -384,8 +383,7 @@
   // hand: which hand popped the balloon (Ouch!! only hurts that one).
   function applyPower(kind, hand) {
     state.toast = { kind, at: state.time };
-    if (kind === 'butterfingers') dropEverything();
-    else if (kind === 'rocket') startRocket();
+    if (kind === 'rocket') startRocket();
     else if (kind === 'ouch') state.effects[`ouch:${hand}`] = state.time + OUCH_SECS;
     else state.effects[kind] = state.time + EFFECT_SECS;
     if (kind === 'swollen') {
@@ -394,7 +392,7 @@
     }
   }
 
-  // Both hands let go, and thumbs already down stop doing anything until lifted.
+  // Both hands let go (used by Rocket), and thumbs already down stop doing anything until lifted.
   function dropEverything() {
     state.hands.forEach((h, i) => {
       letGo(i);
