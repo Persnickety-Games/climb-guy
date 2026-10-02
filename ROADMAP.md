@@ -4,6 +4,12 @@ Ideas captured for later. Nothing here is built yet unless marked done.
 
 ## Daily game (Wordle-style)
 
+**Done (first version):** one run a day, the same level for everyone, reset at midnight Eastern, seeded variations of the normal parameters, streaks (with a 7-day badge), daily share and challenge links, and a start screen that points to other modes once the daily is done.
+
+**Later:** the crazier twists (tiny ledges, moon gravity, mirror day…) as a weekly special or extra modes, never Sprint; archive of past dailies; friend leaderboards (needs a server).
+
+Original notes:
+
 - **One run per day.** Each player gets one attempt at the daily climb. After it ends, they can't play again until the next day starts. The reset time is still to be decided, e.g. midnight local time or one fixed global time.
 - **Same game for everyone.** Everyone plays the same level layout, settings and balloon placements that day, so scores compare like for like. This needs a seeded random number generator, seeded from the date, in place of `Math.random()`.
 - **Something different every day,** the same for everyone. Examples:

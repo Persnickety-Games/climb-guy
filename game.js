@@ -120,18 +120,43 @@
   }
 
   // ---------- Mode ----------
-  // Endless is the main game. Sprint (from the ☰ Modes tab or a ?mode=sprint
-  // link): 60 seconds, no rising water, no balloons, its own best.
+  // Daily is the main event: one run a day, the same level for everyone (see
+  // daily.js). Endless and Sprint (60 s, no rising water or balloons, its own
+  // best) are in the ☰ Modes tab, or opened by a ?mode=endless / ?mode=sprint link.
   const SPRINT_SECS = 60;
-  let mode = new URLSearchParams(location.search).get('mode') === 'sprint' ? 'sprint' : 'endless';
+  const URL_MODE = new URLSearchParams(location.search).get('mode');
+  let mode = URL_MODE === 'sprint' || URL_MODE === 'endless' ? URL_MODE : 'daily';
   const sprint = () => mode === 'sprint';
+  const daily = () => mode === 'daily';
   const modeBest = () => (sprint() ? Progress.sprintBest : Progress.best);
+  let day = Daily.today();         // the daily being played; refreshed at each new game
+  let R = Daily.streams(null);     // random streams for the level (seeded in the daily)
+  const NO_DAY = { rowGap: 1, ledgeW: 1, pairs: 1, balloonGap: 1, featureGap: 1, water: 1 };
+  let DAY = NO_DAY;                // the daily's small nudges to the usual settings
+  const DROP_TOP = START_Y + 640;  // where the daily's opening drop starts: the same on every screen (just above the top on short ones)
+  // Is the level being built for real yet? In the daily it's fixed from the
+  // start; otherwise features start once you catch on.
+  const levelLive = () => state.phase === 'playing' || daily();
+
+  // The ⚙ tuning sliders don't apply to the daily, so everyone plays the same game.
+  function applyTuning() {
+    Object.assign(T, DEFAULTS, daily() ? {} : store.get('climber3.tuning', {}));
+    document.getElementById('tune-btn').hidden = daily();
+  }
 
   // ---------- Game state ----------
   // Hand states: held | idle | flying | returning
   let state;
 
   function newGame() {
+    if (daily()) day = Daily.today();
+    R = Daily.streams(daily() ? day.key : null);
+    DAY = daily() ? {
+      rowGap: R.day.r(0.92, 1.08), ledgeW: R.day.r(0.9, 1.1), pairs: R.day.r(0.85, 1.15),
+      balloonGap: R.day.r(0.85, 1.15), featureGap: R.day.r(0.85, 1.15), water: R.day.r(0.94, 1.06),
+    } : NO_DAY;
+    applyTuning();
+    CHALLENGE = challengeFor(mode);
     const startHold = { x: 200, y: START_Y, w: 240, h: 20, ci: 0 };
     const cam = START_Y - 120;
     state = {
@@ -139,7 +164,7 @@
       overAt: 0,
       time: 0,
       // The climber drops in from the top of the screen; tap to catch a ledge.
-      body: { x: 200, y: cam + viewH - 40, vx: 0, vy: 0 },
+      body: { x: 200, y: daily() ? DROP_TOP : cam + viewH - 40, vx: 0, vy: 0 },
       hands: [
         { state: 'idle', x: 0, y: 0, vx: 0, vy: 0, t: 0, launchY: 0 },
         { state: 'idle', x: 0, y: 0, vx: 0, vy: 0, t: 0, launchY: 0 },
@@ -156,7 +181,7 @@
       cam,
       baseY: START_Y,          // height 0 m; set to wherever you first catch on
       maxY: START_Y,
-      badFromM: rand(...BAD_FROM_M), // where power-downs start this run
+      badFromM: R.day.r(...BAD_FROM_M), // where power-downs start this run
       best: modeBest(),
       newBest: false,
       bestAtStart: modeBest(),
@@ -170,7 +195,7 @@
       clutchY: null,           // where you were when the water nearly got you (Clutch)
       flingFromY: 0,
       birds: [],
-      wind: { a: 0, target: 0, until: 0, next: 0 },
+      wind: { a: 0, target: 0, until: 0, next: 0, nextM: 0 },
       windBits: [],            // streaks and leaves showing the wind
       confetti: [],
       banner: null,            // { text, sub, at, small }
@@ -178,6 +203,7 @@
       flinging: false,
       screamed: false,
     };
+    if (daily()) initFeatures(); // fixed from the ground up, so it's the same for everyone
     placeIdle(LEFT);
     placeIdle(RIGHT);
     generateHolds();
@@ -204,15 +230,29 @@
   function startPlaying() {
     if (state.phase !== 'ready') return;
     state.phase = 'playing';
-    state.baseY = state.maxY = state.body.y;
+    // Heights count from where you catch on; in the daily, from the ground,
+    // so everyone's heights compare directly.
+    if (!daily()) {
+      state.baseY = state.body.y;
+      initFeatures();
+    }
+    state.maxY = state.body.y;
     state.startTime = state.time;
     badge(Progress.award('first'));
-    state.nextBalloonM = sprint() ? Infinity : EARLY ? 3 : rand(...FIRST_BALLOON_M);
-    state.nextMoverM = MOVERS_EARLY ? 2 : rand(...FIRST_MOVER_M);
-    state.nextGhostM = GHOSTS_EARLY ? 2 : rand(...FIRST_GHOST_M);
-    state.nextIcyM = ICY_EARLY ? 2 : rand(...FIRST_ICY_M);
-    state.windFromM = WIND_EARLY ? 2 : rand(...FIRST_WIND_M);
-    state.birdFromM = BIRDS_EARLY ? 2 : rand(...FIRST_BIRD_M);
+  }
+
+  // Where each feature first appears (in meters). The ?powerups-style test
+  // flags don't apply to the daily.
+  function initFeatures() {
+    const d = R.day, test = !daily();
+    state.nextBalloonM = sprint() ? Infinity : test && EARLY ? 3 : d.r(...FIRST_BALLOON_M);
+    state.nextMoverM = test && MOVERS_EARLY ? 2 : d.r(...FIRST_MOVER_M);
+    state.nextGhostM = test && GHOSTS_EARLY ? 2 : d.r(...FIRST_GHOST_M);
+    state.nextIcyM = test && ICY_EARLY ? 2 : d.r(...FIRST_ICY_M);
+    state.windFromM = test && WIND_EARLY ? 2 : d.r(...FIRST_WIND_M);
+    state.birdFromM = test && BIRDS_EARLY ? 2 : d.r(...FIRST_BIRD_M);
+    state.wind.nextM = state.windFromM;
+    state.nextBirdM = state.birdFromM;
     state.nextCheckpointM = CHECKPOINT_EVERY_M;
     state.nextMilestoneM = CHECKPOINT_EVERY_M;
     state.landmarkIdx = 0;
@@ -236,7 +276,7 @@
     while (state.holdsTop < state.cam + viewH + T.armReach + 200) {
       // Difficulty 0..1, ramping gently over the first 500 m climbed.
       const d = clamp((state.holdsTop - state.baseY) / (FULL_DIFFICULTY_M * UNITS_PER_METER), 0, 1);
-      const y = state.holdsTop + lerp(85, 155, d) * rand(0.75, 1.25);
+      const y = state.holdsTop + lerp(85, 155, d) * R.rows.r(0.75, 1.25) * DAY.rowGap;
       spawnRow(y, d);
       state.holdsTop = y;
     }
@@ -248,17 +288,18 @@
   const FULL_DIFFICULTY_M = 500; // ledges keep thinning out and shrinking until here
 
   function spawnRow(y, d) {
-    const count = Math.random() < lerp(0.55, 0.15, d) ? 2 : 1;
+    const r = R.rows;
+    const count = r.p(clamp(lerp(0.55, 0.15, d) * DAY.pairs, 0, 0.9)) ? 2 : 1;
     const slotW = WORLD_W / count;
     const row = [];
     for (let i = 0; i < count; i++) {
-      const tall = Math.random() < 0.15;
-      const w = tall ? rand(16, 24) : lerp(140, 70, d) * rand(0.7, 1.3) / (count === 2 ? 1.4 : 1);
-      const h = tall ? rand(50, 90) : rand(14, 22);
-      const x = rand(slotW * i + w / 2 + 6, slotW * (i + 1) - w / 2 - 6);
+      const tall = r.p(0.15);
+      const w = tall ? r.r(16, 24) : Math.min(lerp(140, 70, d) * r.r(0.7, 1.3) * DAY.ledgeW / (count === 2 ? 1.4 : 1), slotW - 12);
+      const h = tall ? r.r(50, 90) : r.r(14, 22);
+      const x = r.r(slotW * i + w / 2 + 6, slotW * (i + 1) - w / 2 - 6);
       row.push({
-        x, y: y + rand(-15, 15), w, h,
-        ci: (Math.random() * 5) | 0, // which of the ledge theme's colors
+        x, y: y + r.r(-15, 15), w, h,
+        ci: r.i(5), // which of the ledge theme's colors
       });
     }
     const prev = state.lastRow || [state.holds[0]];
@@ -269,9 +310,9 @@
     }
     if (bestGap > MAX_ROW_SHIFT) {
       const dir = Math.sign(anchor.x - best.x);
-      best.x += dir * (bestGap - MAX_ROW_SHIFT + rand(0, 40));
+      best.x += dir * (bestGap - MAX_ROW_SHIFT + r.r(0, 40));
     }
-    if (state.phase === 'ready' && y < state.body.y) centerForDrop(row);
+    if (daily() ? y < DROP_TOP : state.phase === 'ready' && y < state.body.y) centerForDrop(row);
     const checkpoint = checkpointFor(y);
     if (checkpoint) {
       row.length = 0;
@@ -290,9 +331,9 @@
   function centerForDrop(row) {
     const mid = WORLD_W / 2;
     const o = row.reduce((a, b) => (Math.abs(b.x - mid) < Math.abs(a.x - mid) ? b : a));
-    o.w = Math.max(o.w, rand(110, 160));
-    o.h = rand(16, 22);
-    o.x = mid + rand(-o.w / 2 + 40, o.w / 2 - 40);
+    o.w = Math.max(o.w, R.rows.r(110, 160));
+    o.h = R.rows.r(16, 22);
+    o.x = mid + R.rows.r(-o.w / 2 + 40, o.w / 2 - 40);
     for (let k = row.length - 1; k >= 0; k--) {
       const other = row[k];
       if (other !== o && Math.abs(other.x - o.x) < (other.w + o.w) / 2 + 10) row.splice(k, 1);
@@ -306,21 +347,21 @@
   // tightens as you climb.
   function moverGapM(m) {
     const k = clamp((m - FIRST_MOVER_M[0]) / 500, 0, 1);
-    return lerp(30, 8, k) * rand(0.7, 1.3);
+    return lerp(30, 8, k) * R.features.r(0.7, 1.3) * DAY.featureGap;
   }
 
   function maybeMakeMover(row, y) {
-    if (state.phase !== 'playing' || state.nextMoverM == null) return;
+    if (!levelLive() || state.nextMoverM == null) return;
     const m = (y - state.baseY) / UNITS_PER_METER;
     if (m < state.nextMoverM) return;
-    makeMover(row[(Math.random() * row.length) | 0]);
+    makeMover(row[R.features.i(row.length)]);
     state.nextMoverM = m + moverGapM(m);
   }
 
   // Slide back and forth along the long side, each with its own distance and pace.
   function makeMover(o) {
     const axis = o.w >= o.h ? 'x' : 'y';
-    let amp = axis === 'x' ? rand(30, 110) : rand(25, 70);
+    let amp = axis === 'x' ? R.features.r(30, 110) : R.features.r(25, 70);
     let base = o[axis];
     if (axis === 'x') {
       const room = (WORLD_W - o.w) / 2 - 6;
@@ -328,7 +369,7 @@
       base = clamp(base, o.w / 2 + 6 + amp, WORLD_W - o.w / 2 - 6 - amp);
       if (!(base > 0)) base = WORLD_W / 2;
     }
-    o.move = { axis, base, amp, speed: (Math.PI * 2) / rand(2.5, 5), phase: rand(0, Math.PI * 2) };
+    o.move = { axis, base, amp, speed: (Math.PI * 2) / R.features.r(2.5, 5), phase: R.features.r(0, Math.PI * 2) };
   }
 
   // Move ledges, and carry any hand holding one along with it.
@@ -351,21 +392,22 @@
 
   function ghostGapM(m) {
     const k = clamp((m - FIRST_GHOST_M[0]) / 500, 0, 1);
-    return lerp(30, 10, k) * rand(0.7, 1.3);
+    return lerp(30, 10, k) * R.features.r(0.7, 1.3) * DAY.featureGap;
   }
 
   function maybeAddGhost(row, y) {
-    if (state.phase !== 'playing' || state.nextGhostM == null) return;
+    if (!levelLive() || state.nextGhostM == null) return;
     const m = (y - state.baseY) / UNITS_PER_METER;
     if (m < state.nextGhostM) return;
     // Find a spot in this row that doesn't overlap a real ledge.
-    const w = rand(55, 130), h = rand(14, 22);
+    const f = R.features;
+    const w = f.r(55, 130), h = f.r(14, 22);
     for (let tries = 0; tries < 12; tries++) {
-      const x = rand(w / 2 + 6, WORLD_W - w / 2 - 6);
+      const x = f.r(w / 2 + 6, WORLD_W - w / 2 - 6);
       if (row.some(o => Math.abs(o.x - x) < (o.w + w) / 2 + 12)) continue;
       state.holds.push({
-        x, y: y + rand(-15, 15), w, h, ghost: true,
-        ci: (Math.random() * 5) | 0, // which of the ledge theme's colors
+        x, y: y + f.r(-15, 15), w, h, ghost: true,
+        ci: f.i(5), // which of the ledge theme's colors
       });
       state.nextGhostM = m + ghostGapM(m);
       return;
@@ -389,11 +431,11 @@
   const climbedM = () => (state.maxY - state.baseY) / UNITS_PER_METER;
 
   // A gap that starts at ~30 m and tightens to ~10 m over 500 m.
-  const featureGapM = (m, from) => lerp(30, 10, clamp((m - from) / 500, 0, 1)) * rand(0.7, 1.3);
+  const featureGapM = (m, from) => lerp(30, 10, clamp((m - from) / 500, 0, 1)) * R.features.r(0.7, 1.3) * DAY.featureGap;
 
   // Every 100 m, a wide, sturdy golden ledge with a flag.
   function checkpointFor(y) {
-    if (state.phase !== 'playing') return null;
+    if (!levelLive()) return null;
     const m = (y - state.baseY) / UNITS_PER_METER;
     if (m < state.nextCheckpointM) return null;
     const cp = { x: WORLD_W / 2, y, w: 230, h: 24, color: '#c9a227', checkpoint: state.nextCheckpointM };
@@ -403,7 +445,7 @@
 
   // Icy ledges: a hand holding one slowly slides off the end.
   function maybeMakeIcy(row, y) {
-    if (state.phase !== 'playing' || state.nextIcyM == null) return;
+    if (!levelLive() || state.nextIcyM == null) return;
     const m = (y - state.baseY) / UNITS_PER_METER;
     if (m < state.nextIcyM) return;
     const o = row.find(o => o.w > o.h && !o.move);
@@ -434,10 +476,13 @@
     const w = state.wind;
     const m = climbedM();
     if (state.phase === 'playing' && m >= state.windFromM) {
-      if (w.target === 0 && state.time >= w.next) {
-        const k = clamp((m - state.windFromM) / 400, 0, 1);
-        w.target = (Math.random() < 0.5 ? -1 : 1) * rand(250, 450) * (1 + k);
-        w.until = state.time + rand(2.5, 4.5);
+      // Gusts come every few seconds; in the daily, at set heights instead, so
+      // fast and slow climbers meet the same gusts in the same places.
+      if (w.target === 0 && (daily() ? m >= w.nextM : state.time >= w.next)) {
+        const k = clamp(((daily() ? w.nextM : m) - state.windFromM) / 400, 0, 1);
+        w.target = (R.wind.p(0.5) ? -1 : 1) * R.wind.r(250, 450) * (1 + k);
+        w.until = state.time + R.wind.r(2.5, 4.5);
+        if (daily()) w.nextM += lerp(20, 10, k) * R.wind.r(0.7, 1.3) * DAY.featureGap;
         sfx.gust();
       } else if (w.target !== 0 && state.time >= w.until) {
         const k = clamp((m - state.windFromM) / 400, 0, 1);
@@ -466,14 +511,15 @@
   // Birds fly across and knock thrown hands off course.
   function stepBirds(dt) {
     const m = climbedM();
-    if (state.phase === 'playing' && m >= state.birdFromM && state.time >= (state.nextBirdAt || 0)) {
-      const k = clamp((m - state.birdFromM) / 400, 0, 1);
-      const dir = Math.random() < 0.5 ? -1 : 1;
-      state.birds.push({
-        dir, x: dir > 0 ? -30 : WORLD_W + 30,
-        y: state.cam + viewH * rand(0.35, 0.92), speed: rand(110, 190), phase: rand(0, 6.3),
-      });
-      state.nextBirdAt = state.time + lerp(12, 5, k) * rand(0.7, 1.3);
+    // Birds come every few seconds; in the daily, at set heights instead.
+    if (state.phase === 'playing' && m >= state.birdFromM && (daily() ? m >= state.nextBirdM : state.time >= (state.nextBirdAt || 0))) {
+      const at = daily() ? state.nextBirdM : m;
+      const k = clamp((at - state.birdFromM) / 400, 0, 1);
+      const dir = R.birds.p(0.5) ? -1 : 1;
+      const y = daily() ? state.baseY + (at + R.birds.r(4, 10)) * UNITS_PER_METER : state.cam + viewH * rand(0.35, 0.92);
+      state.birds.push({ dir, x: dir > 0 ? -30 : WORLD_W + 30, y, speed: R.birds.r(110, 190), phase: rand(0, 6.3) });
+      if (daily()) state.nextBirdM += lerp(24, 10, k) * R.birds.r(0.7, 1.3) * DAY.featureGap;
+      else state.nextBirdAt = state.time + lerp(12, 5, k) * rand(0.7, 1.3);
     }
     for (const b of state.birds) {
       b.x += b.dir * b.speed * dt;
@@ -495,13 +541,21 @@
   }
 
   // ---------- Celebrations ----------
+  // A friend's link: ?daily=12&beat=152&from=Sam (that day's daily), or
+  // ?mode=endless|sprint&beat=...
   const PARAMS_CHALLENGE = (() => {
     const m = parseInt(PARAMS.get('beat'), 10);
     if (!(m > 0)) return null;
     const name = (PARAMS.get('from') || '').replace(/[^\p{L}\p{N} '._-]/gu, '').trim().slice(0, 20);
-    return { m, name };
+    const n = parseInt(PARAMS.get('daily'), 10);
+    return { m, name, mode: n > 0 ? 'daily' : PARAMS.get('mode') === 'sprint' ? 'sprint' : 'endless', n: n > 0 ? n : null };
   })();
-  let CHALLENGE = PARAMS_CHALLENGE; // dropped if you switch to another mode
+  // The challenge only applies in its own mode (and, for a daily, on that day).
+  const challengeFor = (md) => {
+    const c = PARAMS_CHALLENGE;
+    return c && c.mode === md && (md !== 'daily' || c.n === Daily.today().n) ? c : null;
+  };
+  let CHALLENGE = null; // set by newGame
   const challengerName = () => (CHALLENGE.name ? CHALLENGE.name : 'your friend');
   const challengerPossessive = () => (CHALLENGE.name ? `${CHALLENGE.name}'s` : "Your friend's");
 
@@ -536,6 +590,10 @@
   // Milestones, your best, a friend's challenge, and landmarks you pass.
   function checkCrossings() {
     if (state.phase !== 'playing') return;
+    if (daily() && heightMeters() !== state.savedM) {
+      state.savedM = heightMeters();
+      Progress.dailyProgress(day, state.savedM);
+    }
     const m = climbedM();
     while (state.landmarkIdx < LANDMARKS.length && m >= LANDMARKS[state.landmarkIdx][0]) {
       Progress.noteLandmark(state.landmarkIdx);
@@ -620,7 +678,7 @@
   // Balloons are spaced by height. The first power-down sits exactly where
   // power-downs begin, so every climber who gets that far meets one.
   function spawnBalloons() {
-    if (state.phase !== 'playing') return;
+    if (!levelLive()) return;
     while (state.baseY + state.nextBalloonM * UNITS_PER_METER < state.cam + viewH + 600) {
       const m = state.nextBalloonM;
       const late = m >= state.badFromM;
@@ -633,10 +691,10 @@
         kind = pickPower(k => (POWERS[k].good || late) && (state.balloonCount || k !== 'rocket'));
       }
       state.balloons.push({
-        kind, x: rand(60, WORLD_W - 60), y: state.baseY + m * UNITS_PER_METER, phase: rand(0, 6.3), popped: 0,
+        kind, x: R.balloons.r(60, WORLD_W - 60), y: state.baseY + m * UNITS_PER_METER, phase: rand(0, 6.3), popped: 0,
       });
       state.balloonCount = (state.balloonCount || 0) + 1;
-      let next = m + rand(...(late ? BALLOON_GAP_LATE_M : BALLOON_GAP_M));
+      let next = m + R.balloons.r(...(late ? BALLOON_GAP_LATE_M : BALLOON_GAP_M)) * DAY.balloonGap;
       if (!state.firstBadPlaced && next > state.badFromM) next = Math.max(state.badFromM, m + BALLOON_GAP_LATE_M[0]);
       state.nextBalloonM = next;
     }
@@ -644,7 +702,7 @@
 
   function pickPower(allowed) {
     const pool = Object.keys(POWERS).filter(allowed);
-    let r = Math.random() * pool.reduce((sum, k) => sum + POWERS[k].weight, 0);
+    let r = R.balloons.r(0, pool.reduce((sum, k) => sum + POWERS[k].weight, 0));
     return pool.find(k => (r -= POWERS[k].weight) < 0) || pool[0];
   }
 
@@ -778,7 +836,8 @@
     if (!tunePanel.hidden || Menu.isOpen()) return;
     e.preventDefault();
     if (state.phase === 'over') {
-      if (state.time - state.overAt > 0.6) newGame();
+      // The daily is one run a day: afterwards, back to the start screen.
+      if (state.time - state.overAt > 0.6) { if (daily()) showStart(); else newGame(); }
       return;
     }
     if (state.rocket) return;
@@ -1045,7 +1104,7 @@
     }
     if (state.phase === 'playing' && !sprint() && !active('freeze')) {
       const climbed = Math.max(0, state.maxY - state.baseY);
-      let speed = T.waterSpeed + T.waterRamp * climbed / 1000;
+      let speed = (T.waterSpeed + T.waterRamp * climbed / 1000) * DAY.water;
       if (state.water < state.cam - 200) speed *= 4; // catch up if you're far ahead
       if (active('flood')) speed *= 1.25;
       state.water += speed * dt;
@@ -1066,7 +1125,7 @@
     } else {
       state.result = Progress.recordRun({
         m, secs: climbing ? state.time - state.startTime : 0, splash: climbing && m < 5,
-        unlockedBefore: state.unlockedBefore,
+        unlockedBefore: state.unlockedBefore, daily: daily() ? day : null,
       });
       store.set('climber2.best', Progress.best);
     }
@@ -1793,6 +1852,13 @@
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.fillText(`${sprint() ? 'Sprint best' : 'Best'} ${state.best} m`, ox + 14, top + 46);
     if (sprint()) drawSprintClock(top);
+    if (daily()) {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.fillText(`📅 DAILY #${day.n}`, ox + (WORLD_W * scale) / 2, top + 10);
+      ctx.textAlign = 'left';
+    }
     drawEffects(top + 60);
     drawToast();
 
@@ -1828,7 +1894,13 @@
       ctx.fillText(`${heightMeters()} m`, cx, y0 + 40);
       ctx.font = '15px system-ui, sans-serif';
       ctx.fillStyle = state.newBest ? '#ffd27a' : 'rgba(255,255,255,0.8)';
-      ctx.fillText(state.newBest ? (sprint() ? 'New Sprint best!' : 'New best!') : `${sprint() ? 'Sprint best' : 'Best'} ${state.best} m`, cx, y0 + 68);
+      if (daily()) {
+        const streak = Progress.dailyStreak(day.key);
+        ctx.fillStyle = '#ffd27a';
+        ctx.fillText(`Daily #${day.n}${streak >= 2 ? ` · 🔥 ${streak}-day streak` : ''}${state.newBest ? ' · New best!' : ''}`, cx, y0 + 68);
+      } else {
+        ctx.fillText(state.newBest ? (sprint() ? 'New Sprint best!' : 'New best!') : `${sprint() ? 'Sprint best' : 'Best'} ${state.best} m`, cx, y0 + 68);
+      }
       if (state.unit) {
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         ctx.font = 'italic 14px system-ui, sans-serif';
@@ -1862,7 +1934,7 @@
       }
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText('Tap anywhere to climb again', cx, ly + 14);
+      ctx.fillText(daily() ? 'Tap to continue' : 'Tap anywhere to climb again', cx, ly + 14);
     }
     ctx.textAlign = 'left';
   }
@@ -1957,30 +2029,30 @@
   nameInput.value = store.get('climber.name', '');
   nameInput.addEventListener('input', () => store.set('climber.name', nameInput.value.trim().slice(0, 20)));
 
-  // The link carries your height (and name) so a friend gets a line to beat.
-  function shareUrl() {
+  // The link carries the mode (or daily number), your height and name, so a
+  // friend gets the same level and a line to beat.
+  function shareUrl(md, m, n) {
     const base = location.origin + location.pathname;
-    const m = heightMeters();
-    if (!m) return sprint() ? `${base}?mode=sprint` : base;
-    const p = new URLSearchParams(sprint() ? { mode: 'sprint' } : {});
-    p.set('beat', String(m));
-    const name = nameInput.value.trim().slice(0, 20);
-    if (name) p.set('from', name);
+    const p = new URLSearchParams(md === 'daily' ? { daily: String(n) } : { mode: md });
+    if (m) {
+      p.set('beat', String(m));
+      const name = nameInput.value.trim().slice(0, 20);
+      if (name) p.set('from', name);
+    }
     return `${base}?${p}`;
   }
 
-  function shareText() {
-    const m = heightMeters();
+  function shareText(md = mode, m = heightMeters(), u = state.unit, n = day.n) {
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const u = state.unit;
     const units = u ? ` That's ${unitPhrase(u)}. How many ${u.many} could you climb?` : ' Think you can do better?';
-    if (sprint()) return `I climbed ${m} meters in 60 seconds on ${date}.${units} ⏱️ ${shareUrl()}`;
-    return `I climbed ${m} meters before my demise on ${date}.${units} 🧗 ${shareUrl()}`;
+    const url = shareUrl(md, m, n);
+    if (md === 'daily') return `Climb Guy #${n} 🧗 I climbed ${m} meters before my demise.${units} ${url}`;
+    if (md === 'sprint') return `I climbed ${m} meters in 60 seconds on ${date}.${units} ⏱️ ${url}`;
+    return `I climbed ${m} meters before my demise on ${date}.${units} 🧗 ${url}`;
   }
 
   // Native share sheet on phones; otherwise copy to the clipboard.
-  async function share() {
-    const text = shareText();
+  async function share(text = shareText(), shareStatus = document.getElementById('share-status')) {
     shareStatus.textContent = '';
     try {
       if (navigator.share) {
@@ -1998,14 +2070,14 @@
     }
   }
 
-  document.getElementById('share-btn').addEventListener('click', share);
+  document.getElementById('share-btn').addEventListener('click', () => share());
   document.getElementById('reroll-btn').addEventListener('click', () => {
     state.unit = pickUnit(heightMeters());
     shareStatus.textContent = '';
   });
 
   function syncOverlay() {
-    const show = state.phase === 'over' && tunePanel.hidden && !Menu.isOpen();
+    const show = started && state.phase === 'over' && tunePanel.hidden && !Menu.isOpen();
     if (overActions.hidden === show) { // only touch the DOM when it changes
       overActions.hidden = !show;
       if (!show) shareStatus.textContent = '';
@@ -2074,41 +2146,97 @@
   });
 
   // ---------- Start screen ----------
-  // On first load the game waits, blurred, until a tap; then the climber drops in.
+  // The game waits, blurred, behind the start screen. Normally a tap starts
+  // today's daily. Once it's done, the screen shows your result, a countdown
+  // to the next one, and the other modes.
   let started = false;
   const startEl = document.getElementById('start');
-  const startLine = sprint() ? '⏱️ Sprint: 60 seconds. ' : '';
-  if (CHALLENGE) document.getElementById('start-line').textContent = `${startLine}Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${CHALLENGE.m} m!`;
-  else if (modeBest() > 0) document.getElementById('start-line').textContent = `${startLine}Your best: ${modeBest()} m`;
-  else if (startLine) document.getElementById('start-line').textContent = startLine.trim();
+  const $ = (id) => document.getElementById(id);
+  const youVs = (c, m) => (m > c.m ? `You beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m by ${m - c.m} m!`
+    : m === c.m ? `You tied ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`
+    : `${challengerPossessive()} ${c.m} m beat you by ${c.m - m} m.`);
+  let doneTimer = null;
+
+  function renderStart() {
+    const today = Daily.today();
+    const result = daily() ? Progress.dailyResult(today.key) : null;
+    const streak = Progress.dailyStreak(today.key);
+    const c = CHALLENGE;
+    startEl.classList.toggle('done', !!result);
+    $('start-done').hidden = !result;
+    $('start-tap').hidden = !!result;
+    if (daily()) {
+      $('start-day').textContent = `📅 Daily #${today.n} · ${today.label}`;
+      const lines = [];
+      if (!result && c) lines.push(`Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`);
+      if (!result && !c && PARAMS_CHALLENGE && PARAMS_CHALLENGE.mode === 'daily') {
+        const pc = PARAMS_CHALLENGE;
+        lines.push(`${pc.name || 'Your friend'} climbed ${pc.m} m on Daily #${pc.n}. Today's is a new climb.`);
+      }
+      if (streak >= 2) lines.push(`🔥 ${streak}-day streak${result ? '' : ': keep it going!'}`);
+      $('start-line').textContent = lines.join('\n');
+      if (result) {
+        $('done-score').textContent = `✓ ${result.m} m`;
+        $('done-vs').textContent = c ? youVs(c, result.m) : '';
+        $('done-status').textContent = '';
+        const tick = () => {
+          if (Daily.today().key !== today.key) { clearInterval(doneTimer); doneTimer = null; newGame(); renderStart(); return; }
+          $('done-next').textContent = `Next daily in ${Daily.countdown(Daily.msUntilNext())}`;
+        };
+        tick();
+        if (!doneTimer) doneTimer = setInterval(tick, 1000);
+      }
+    } else {
+      $('start-day').textContent = sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
+      $('start-line').textContent = c ? `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`
+        : modeBest() > 0 ? `Your best: ${modeBest()} m` : '';
+    }
+    if (!result && doneTimer) { clearInterval(doneTimer); doneTimer = null; }
+  }
+
+  function showStart() {
+    started = false;
+    startEl.hidden = false;
+    startEl.classList.remove('gone');
+    renderStart();
+  }
+
   function begin(e) {
-    if (started) return;
+    if (started || startEl.classList.contains('done')) return;
     e.preventDefault();
+    // Left the start screen open past midnight Eastern? Build the new day's level.
+    if (daily() && Daily.today().key !== day.key) newGame();
     dismissStart();
   }
   function dismissStart() {
     started = true;
     last = performance.now();
     startEl.classList.add('gone');
-    setTimeout(() => { startEl.hidden = true; }, 450);
+    setTimeout(() => { if (started) startEl.hidden = true; }, 450);
   }
   startEl.addEventListener('pointerdown', begin);
   startEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') begin(e); });
-  startEl.focus();
 
-  // ---------- Menu (stats, passport, badges, customize) ----------
-  document.getElementById('menu-btn').addEventListener('click', () => Menu.open());
-  document.getElementById('customize-btn').addEventListener('click', () => Menu.open('customize'));
-  Menu.mode = () => mode;
-  const linkMode = mode;
-  Menu.onMode = (m) => {
+  function playMode(m) {
+    // Leaving a daily mid-climb ends it: the daily is one run a day.
+    if (daily() && state.phase === 'playing') gameOver();
     mode = m;
-    CHALLENGE = m === linkMode ? PARAMS_CHALLENGE : null;
-    if (!started) dismissStart();
     skin = Progress.equipped();
     newGame();
-    last = performance.now();
-  };
+    dismissStart();
+  }
+  for (const b of startEl.querySelectorAll('[data-mode]')) b.addEventListener('click', () => playMode(b.dataset.mode));
+  $('done-share').addEventListener('click', () => {
+    const today = Daily.today();
+    const result = Progress.dailyResult(today.key);
+    if (result) share(shareText('daily', result.m, pickUnit(result.m), today.n), $('done-status'));
+  });
+
+  // ---------- Menu (stats, passport, badges, customize, modes) ----------
+  document.getElementById('menu-btn').addEventListener('click', () => Menu.open());
+  document.getElementById('customize-btn').addEventListener('click', () => Menu.open('customize'));
+  Menu.mode = () => (started ? mode : null);
+  Menu.onMode = playMode;
   Menu.onClose = () => {
     skin = Progress.equipped();
     last = performance.now(); // don't fast-forward the time spent in the menu
@@ -2118,5 +2246,7 @@
   window.climber = { get state() { return state; }, get mode() { return mode; }, T, power: (kind, hand = 0) => applyPower(kind, hand), shareText: () => shareText() };
 
   newGame();
+  renderStart();
+  startEl.focus();
   requestAnimationFrame(frame);
 })();

@@ -211,15 +211,16 @@ window.Menu = (() => {
   }
 
   // ---------- Modes ----------
-  // Endless is the main game; the rest are side modes tucked away here.
+  // The daily is the main event; the rest are side modes tucked away here.
   const MODES = [
-    { id: 'endless', icon: '🌊', name: 'Endless', desc: 'The main game. Climb until the water gets you.', best: () => Progress.best },
+    { id: 'daily', icon: '📅', name: 'Daily', desc: 'One run a day, the same level for everyone. A new one every midnight Eastern.' },
+    { id: 'endless', icon: '🌊', name: 'Endless', desc: 'Climb until the water gets you. Play as often as you like.', best: () => Progress.best },
     { id: 'sprint', icon: '⏱️', name: 'Sprint', desc: '60 seconds. No rising water, no balloons. How high can you get? Has its own best and doesn’t count toward your stats.', best: () => Progress.sprintBest },
     { id: 'classic', icon: '👆', name: 'Classic', desc: 'The original one-finger version: drag to slingshot, and the hand grabs on its own.', href: 'classic/' },
   ];
 
   function renderModes() {
-    body.append(el('p', 'muted', 'Side modes and variations. Endless is the main game.'));
+    body.append(el('p', 'muted', 'The daily is the main event. The rest are any time.'));
     const list = el('div', 'modes');
     for (const m of MODES) {
       const playing = api.mode() === m.id;
@@ -227,8 +228,12 @@ window.Menu = (() => {
       const text = el('div', 'mode-text');
       text.append(el('div', 'mode-name', `${m.icon} ${m.name}`), el('div', 'mode-desc', m.desc));
       if (m.best && m.best() > 0) text.append(el('div', 'mode-best', `Best ${fmtNum(m.best())} m`));
-      const btn = el(m.href ? 'a' : 'button', 'mode-play', playing ? 'Restart' : 'Play');
+      const today = m.id === 'daily' ? Daily.today() : null;
+      const done = today && Progress.dailyResult(today.key);
+      if (today) text.append(el('div', 'mode-best', done ? `Daily #${today.n}: ${fmtNum(done.m)} m · next in ${Daily.countdown(Daily.msUntilNext())}` : `Daily #${today.n} is ready`));
+      const btn = el(m.href ? 'a' : 'button', 'mode-play', done ? '✓ Done' : playing ? (m.id === 'daily' ? 'Playing' : 'Restart') : 'Play');
       if (m.href) btn.href = m.href;
+      else if (done || (playing && m.id === 'daily')) btn.disabled = true;
       else btn.addEventListener('click', () => { root.hidden = true; if (api.onMode) api.onMode(m.id); });
       card.append(text, btn);
       list.append(card);

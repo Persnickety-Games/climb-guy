@@ -45,6 +45,7 @@ window.Progress = (() => {
     { id: 'allpowers', icon: '🌈', name: 'Tried Everything', desc: 'Pop every kind of balloon.' },
     { id: 'regular', icon: '📅', name: 'Regular', desc: 'Play on 3 different days.' },
     { id: 'dedicated', icon: '🔁', name: 'Dedicated', desc: 'Play 50 runs.' },
+    { id: 'streak7', icon: '🔥', name: 'On a Roll', desc: 'Play the daily 7 days in a row.' },
     { id: 'km1', icon: '🥾', name: 'Hiker', desc: 'Climb 1,000 m in total.' },
     { id: 'km10', icon: '🏔️', name: 'Mountaineer', desc: 'Climb 10,000 m in total.' },
     { id: 'fooled', icon: '👻', name: 'Fooled', desc: 'Try to grab a ghost ledge.' },
@@ -94,6 +95,7 @@ window.Progress = (() => {
       badges: {},             // id -> timestamp earned
       landmarks: {},          // index -> timestamp first reached
       equipped: {},
+      daily: {},              // 'YYYY-MM-DD' (Eastern) -> { m, n }: your one run of that day's daily
       sprintBest: 0,          // Sprint mode (60 s) has its own best and doesn't count as a run
       sprintRuns: 0,
     };
@@ -213,7 +215,7 @@ window.Progress = (() => {
   const dayKey = (d = new Date()) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 
   // Save a finished run. Returns what's new: badges, unlocks, and whether it's a best.
-  function recordRun({ m, secs, splash, unlockedBefore }) {
+  function recordRun({ m, secs, splash, unlockedBefore, daily }) {
     const before = unlockedBefore || unlockedSet();
     const badgesBefore = new Set(Object.keys(p.badges));
     const isBest = m > p.best;
@@ -230,6 +232,10 @@ window.Progress = (() => {
     if (p.totalM >= 1000) award('km1');
     if (p.totalM >= 10000) award('km10');
     if (splash) award('splash');
+    if (daily) {
+      p.daily[daily.key] = { m, n: daily.n };
+      if (dailyStreak(daily.key) >= 7) award('streak7');
+    }
     save();
     const after = unlockedSet();
     return {
@@ -237,6 +243,24 @@ window.Progress = (() => {
       newBadges: BADGES.filter(b => p.badges[b.id] && !badgesBefore.has(b.id)),
       newUnlocks: [...after].filter(k => !before.has(k)).map(unlockLabel),
     };
+  }
+
+  // Save the daily's height as you climb, so leaving mid-run (or reloading)
+  // still uses up the day's one run.
+  function dailyProgress(daily, m) {
+    const r = p.daily[daily.key];
+    if (r && !r.live) return;
+    p.daily[daily.key] = { m, n: daily.n, live: true };
+    save();
+  }
+
+  // Days in a row you've played the daily, counting back from today (or from
+  // yesterday if today's isn't done yet, so the streak still shows).
+  function dailyStreak(todayKey) {
+    let k = p.daily[todayKey] ? todayKey : Daily.prevKey(todayKey);
+    let n = 0;
+    while (p.daily[k]) { n++; k = Daily.prevKey(k); }
+    return n;
   }
 
   // Save a finished Sprint. Badges earned in it still count; the run history,
@@ -290,7 +314,8 @@ window.Progress = (() => {
     get landmarks() { return p.landmarks; },
     unlockedSnapshot: () => unlockedSet(),
     isUnlocked, requirementText, equipped, equip, award, notePop, noteBirdHit, noteLandmark, noteHeight,
-    recordRun, recordSprint, nextUnlock, stats,
+    recordRun, recordSprint, nextUnlock, stats, dailyStreak,
+    dailyResult: (key) => p.daily[key] || null, dailyProgress,
     // Debug: wipe all progress on this device.
     reset() { p = blank(); p.best = 0; save(); },
   };

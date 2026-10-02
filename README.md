@@ -2,7 +2,17 @@
 
 A browser climbing game by Persnickety Games. Plain HTML/CSS/JS with no build step, hosted on GitHub Pages.
 
-Mobile, two thumbs, two hands. A blurred start screen waits for a tap, then the climber drops in. The left half of the screen controls the left hand and the right half controls the right.
+Mobile, two thumbs, two hands. A blurred start screen waits for a tap, then the climber drops in.
+
+**The daily** is the main event and what the start screen offers. There's one run per day, and everyone gets the same level. The day changes at midnight US Eastern for everyone (`daily.js`). The level comes from a seed made from the date. Ledges, moving, ghost and icy ledges, balloons, wind and birds each get their own seeded random stream, and wind and birds come at set heights. Water speed, ledge sizes and spacing, and feature and balloon frequency get small per-day nudges. Heights count from the ground, the drop starts at the same spot on every screen, and the ⚙ tuning is ignored, so scores compare directly.
+- Leaving or reloading mid-run still uses up the day (the height so far is saved as you climb).
+- Afterwards the start screen shows your result, your streak, a countdown to the next daily, Share, and buttons for Endless and Sprint.
+- Daily share links are `?daily=<n>&beat=<m>&from=<name>`. A friend who opens one that day gets a line to beat. Endless and Sprint links use `?mode=endless|sprint`.
+- `EPOCH` in `daily.js` sets which date is Daily #1.
+
+The rest of the game (also how Endless plays):
+
+ The left half of the screen controls the left hand and the right half controls the right.
 
 - Drag down and release to throw a free hand.
 - Tap while the hand is over a ledge to grab it, and keep your thumb down to hold on. Lift it and the hand lets go.
@@ -20,7 +30,7 @@ Mobile, two thumbs, two hands. A blurred start screen waits for a tap, then the 
   - **Passport:** the 32 landmarks you've climbed past.
   - **Badges:** 23 badges.
   - **Customize:** equip unlocked bodies, hats, faces, hand and arc colors (each hand and each arc set separately), backdrops, ledge styles and water.
-  - **Modes:** side modes and variations. **Sprint** is 60 seconds with no rising water and no balloons; it has its own best, its share links add `mode=sprint`, and it doesn't count toward stats. **Classic** opens the one-finger version. Add `?mode=sprint` to the URL to start in Sprint.
+  - **Modes:** Daily (shows today's result once played), Endless, and side modes. **Sprint** is 60 seconds with no rising water and no balloons; it has its own best, its share links add `mode=sprint`, and it doesn't count toward stats. **Classic** opens the one-finger version. Add `?mode=sprint` to the URL to start in Sprint.
 - Skins unlock at new best heights and with badges (`progress.js`); their art is in `skins.js`. Game over shows new badges, unlocks and the next unlock.
 - Progress is saved only in the browser (`localStorage`). There's no server or account, so it doesn't follow you to another device or browser.
 

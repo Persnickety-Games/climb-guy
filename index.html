@@ -27,10 +27,22 @@
 <body>
   <canvas id="game"></canvas>
 
-  <div id="start" role="button" tabindex="0" aria-label="Tap anywhere to start">
+  <div id="start" tabindex="0" aria-label="Start screen">
     <h1>Climb Guy</h1>
+    <p id="start-day"></p>
     <p id="start-line"></p>
-    <p class="start-tap">Tap anywhere to start</p>
+    <p id="start-tap" class="start-tap">Tap anywhere to start</p>
+    <div id="start-done" hidden>
+      <p id="done-score"></p>
+      <p id="done-vs"></p>
+      <p id="done-next"></p>
+      <div class="done-actions">
+        <button id="done-share" class="done-primary">Share</button>
+        <button data-mode="endless">🌊 Endless</button>
+        <button data-mode="sprint">⏱️ Sprint</button>
+      </div>
+      <p id="done-status" aria-live="polite"></p>
+    </div>
     <p class="start-by">by Persnickety Games</p>
   </div>
 
@@ -70,7 +82,8 @@
   </div>
 
   <script>
-    document.write('<script src="skins.js?v=' + window.CLIMBER_V + '"><\/script>' +
+    document.write('<script src="daily.js?v=' + window.CLIMBER_V + '"><\/script>' +
+                   '<script src="skins.js?v=' + window.CLIMBER_V + '"><\/script>' +
                    '<script src="progress.js?v=' + window.CLIMBER_V + '"><\/script>' +
                    '<script src="menu.js?v=' + window.CLIMBER_V + '"><\/script>');
   </script>
