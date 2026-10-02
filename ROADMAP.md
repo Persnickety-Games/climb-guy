@@ -26,12 +26,12 @@ Ideas captured for later. Nothing here is built yet unless marked done.
 
 ## Power-ups (done)
 
-Balloons pop when a hand passes through them. Green balloons are power-ups and appear from 50 m, with one guaranteed between 50 and 75 m. Red balloons are power-downs and join from somewhere between 140 and 160 m, with the first one guaranteed there. Add `?powerups` to the URL to get balloons from the start for testing.
+Balloons pop when a hand passes through them. Green balloons are power-ups. The first appears between 50 and 75 m, then one every 35–55 m, so there is never more than one on screen. Red balloons are power-downs. The first appears between 140 and 160 m, and after that a balloon (green or red) appears every 20–35 m. Add `?powerups` to the URL to get balloons from the start for testing.
 
 | Balloon | Effect |
 | --- | --- |
 | 🎯 Auto-grab | For 10 s, a thrown hand grabs the highest ledge on its arc and holds on by itself. Touch that side to take over the grip: lift to let go, or drag to throw. |
-| 🔍 Swollen | Ledges that scroll onto the screen in the next 10 s are 25% bigger. |
+| 🔍 Swollen | Every ledge on screen grows 25%, and ledges that scroll on in the next 10 s arrive enlarged. |
 | ❄️ Freeze | The water stops rising for 10 s and turns to ice. |
 | 🚀 Rocket (rare) | Blast off 100 m, then drop in from the top of the screen and catch a ledge. |
 | 🧈 Butterfingers | Both hands let go immediately. |

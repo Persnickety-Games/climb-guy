@@ -156,7 +156,7 @@
     if (state.phase !== 'ready') return;
     state.phase = 'playing';
     state.baseY = state.maxY = state.body.y;
-    placeFirstBalloon();
+    state.nextBalloonM = EARLY ? 3 : rand(...FIRST_BALLOON_M);
   }
 
   function letGo(i) {
@@ -214,7 +214,6 @@
     if (state.phase === 'ready' && y < state.body.y) centerForDrop(row);
     state.holds.push(...row);
     state.lastRow = row;
-    maybeSpawnBalloon(y);
   }
 
   // The opening drop falls straight down the middle, so every row it passes
@@ -233,11 +232,13 @@
 
   // ---------- Power-ups ----------
   const EARLY = new URLSearchParams(location.search).has('powerups');
-  const GOOD_FROM_M = EARLY ? 0 : 50;    // power-ups start appearing here
-  const FIRST_BALLOON_M = [50, 75];      // and the first one is guaranteed somewhere in this range
+  const FIRST_BALLOON_M = [50, 75];      // the first power-up appears somewhere in this range
   const BAD_FROM_M = EARLY ? [5, 5] : [140, 160]; // power-downs start somewhere in this range,
                                                   // with the first one guaranteed there
-  const BALLOON_CHANCE = EARLY ? 0.5 : 0.15; // per row of ledges
+  // Height between balloons. A phone screen shows ~22 m, so before power-downs
+  // there's never more than one balloon on screen.
+  const BALLOON_GAP_M = EARLY ? [5, 8] : [35, 55];
+  const BALLOON_GAP_LATE_M = EARLY ? [5, 8] : [20, 35]; // once power-downs have started
   const BALLOON_R = 18;
   const EFFECT_SECS = 10;
   const BREAK_SECS = 3;                  // hold time before a breakaway ledge crumbles
@@ -246,7 +247,7 @@
 
   const POWERS = {
     autoGrab:      { good: true,  weight: 3,   icon: '🎯', name: 'Auto-grab',     text: 'Throws grab the highest ledge they hit' },
-    swollen:       { good: true,  weight: 3,   icon: '🔍', name: 'Swollen',       text: 'New ledges are 25% bigger' },
+    swollen:       { good: true,  weight: 3,   icon: '🔍', name: 'Swollen',       text: 'Ledges grow 25% bigger' },
     freeze:        { good: true,  weight: 3,   icon: '❄️', name: 'Freeze',        text: 'The water stops rising' },
     rocket:        { good: true,  weight: 0.5, icon: '🚀', name: 'Rocket',        text: `Blast off ${ROCKET_M} m, then catch a ledge` },
     butterfingers: { good: false, weight: 2,   icon: '🧈', name: 'Butterfingers', text: 'Both hands let go!' },
@@ -256,25 +257,35 @@
 
   const active = (kind) => (state.effects[kind] || 0) > state.time;
 
-  function maybeSpawnBalloon(rowY) {
-    const m = (rowY - state.baseY) / UNITS_PER_METER;
-    if (m < GOOD_FROM_M || Math.random() > BALLOON_CHANCE) return;
-    const pool = Object.entries(POWERS).filter(([, p]) => p.good || m >= state.badFromM);
-    let r = Math.random() * pool.reduce((sum, [, p]) => sum + p.weight, 0);
-    const [kind] = pool.find(([, p]) => (r -= p.weight) < 0) || pool[0];
-    state.balloons.push({ kind, x: rand(40, WORLD_W - 40), y: rowY + rand(40, 70), phase: rand(0, 6.3), popped: 0 });
+  // Balloons are spaced by height. The first power-down sits exactly where
+  // power-downs begin, so every climber who gets that far meets one.
+  function spawnBalloons() {
+    if (state.phase !== 'playing') return;
+    while (state.baseY + state.nextBalloonM * UNITS_PER_METER < state.cam + viewH + 600) {
+      const m = state.nextBalloonM;
+      const late = m >= state.badFromM;
+      let kind;
+      if (late && !state.firstBadPlaced) {
+        kind = pickPower(k => !POWERS[k].good);
+        state.firstBadPlaced = true;
+      } else {
+        // The very first balloon is never the (rare) rocket.
+        kind = pickPower(k => (POWERS[k].good || late) && (state.balloonCount || k !== 'rocket'));
+      }
+      state.balloons.push({
+        kind, x: rand(60, WORLD_W - 60), y: state.baseY + m * UNITS_PER_METER, phase: rand(0, 6.3), popped: 0,
+      });
+      state.balloonCount = (state.balloonCount || 0) + 1;
+      let next = m + rand(...(late ? BALLOON_GAP_LATE_M : BALLOON_GAP_M));
+      if (!state.firstBadPlaced && next > state.badFromM) next = Math.max(state.badFromM, m + BALLOON_GAP_LATE_M[0]);
+      state.nextBalloonM = next;
+    }
   }
 
-  // Guarantee one early power-up, and one power-down where they begin,
-  // so every climber gets to meet both.
-  function placeFirstBalloon() {
-    if (EARLY) return;
-    const pick = (keys) => keys[(Math.random() * keys.length) | 0];
-    const place = (kind, m) => state.balloons.push({
-      kind, x: rand(60, WORLD_W - 60), y: state.baseY + m * UNITS_PER_METER, phase: rand(0, 6.3), popped: 0,
-    });
-    place(pick(Object.keys(POWERS).filter(k => POWERS[k].good && k !== 'rocket')), rand(...FIRST_BALLOON_M));
-    place(pick(Object.keys(POWERS).filter(k => !POWERS[k].good)), state.badFromM);
+  function pickPower(allowed) {
+    const pool = Object.keys(POWERS).filter(allowed);
+    let r = Math.random() * pool.reduce((sum, k) => sum + POWERS[k].weight, 0);
+    return pool.find(k => (r -= POWERS[k].weight) < 0) || pool[0];
   }
 
   // Balloons bob gently.
@@ -290,6 +301,10 @@
     if (kind === 'butterfingers') dropEverything();
     else if (kind === 'rocket') startRocket();
     else state.effects[kind] = state.time + EFFECT_SECS;
+    if (kind === 'swollen') {
+      // Everything already on screen grows now; new arrivals grow as they appear.
+      for (const o of state.holds) if (o.seen) swell(o);
+    }
   }
 
   // Both hands let go, and thumbs already down stop doing anything until lifted.
@@ -327,13 +342,25 @@
     for (const o of state.holds) {
       if (o.seen || o.y - o.h / 2 > top) continue;
       o.seen = true;
-      if (active('swollen')) { o.w *= 1.25; o.h *= 1.25; o.swollen = true; }
+      if (active('swollen')) swell(o);
       if (active('breakaway')) { o.breakable = true; o.heldFor = 0; }
     }
   }
 
+  // Grow a ledge 25%, animated so you can see it happen.
+  function swell(o) {
+    if (o.swollen || o.broken) return;
+    o.swollen = { w: o.w, h: o.h, at: state.time };
+  }
+
   function updateLedges(dt) {
     for (const o of state.holds) {
+      if (o.swollen) {
+        const k = clamp((state.time - o.swollen.at) / 0.35, 0, 1);
+        const grow = 1 + 0.25 * (1 - (1 - k) * (1 - k)); // ease out
+        o.w = o.swollen.w * grow;
+        o.h = o.swollen.h * grow;
+      }
       if (o.broken) {
         o.vy -= T.bodyGravity * dt;
         o.y += o.vy * dt;
@@ -1020,6 +1047,7 @@
         if (state.phase !== 'over') {
           step(DT);
           generateHolds();
+          spawnBalloons();
         }
         acc -= DT;
       }
