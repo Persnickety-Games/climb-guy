@@ -9,6 +9,7 @@ Simple browser games for mobile and desktop. Plain HTML/CSS/JS with no build ste
   - Tap while the hand is over a ledge to grab it, and keep your thumb down to hold on. Lift it and the hand lets go.
   - Arms are elastic: let go with the lower hand and the upper arm flings you up. A held hand limits how far the other can reach.
   - Balloons pop when a hand passes through them: green ones are power-ups (first at 50–75 m, then every 35–55 m), red ones are power-downs (first at 140–160 m, then mixed in every 20–35 m). Add `?powerups` to the URL to get balloons from the start. See [ROADMAP.md](ROADMAP.md).
+  - Moving ledges slide back and forth along their long side, starting at 100–125 m and getting more common as you climb. Hold one and you ride along. Add `?moving` to the URL to get them from the start.
 - **Climber Classic** (`climber-classic/`): the original one-finger version. Drag to slingshot, and the hand auto-grabs near the top of its arc.
 
 Both have a ⚙ button with live tuning sliders, saved in your browser.

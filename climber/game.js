@@ -8,6 +8,7 @@
 // A held arm is elastic: let go with the lower hand and the upper arm flings you up.
 // Balloons pop when a hand passes through them: green = power-up, red = power-down.
 // Add ?powerups to the URL to get balloons from the start (for testing).
+// Moving ledges slide along their long side from 100-125 m (?moving: from the start).
 //
 // World units: the play area is 400 units wide; y points UP (height).
 
@@ -157,6 +158,7 @@
     state.phase = 'playing';
     state.baseY = state.maxY = state.body.y;
     state.nextBalloonM = EARLY ? 3 : rand(...FIRST_BALLOON_M);
+    state.nextMoverM = MOVERS_EARLY ? 2 : rand(...FIRST_MOVER_M);
   }
 
   function letGo(i) {
@@ -212,6 +214,7 @@
       best.x += dir * (bestGap - MAX_ROW_SHIFT + rand(0, 40));
     }
     if (state.phase === 'ready' && y < state.body.y) centerForDrop(row);
+    maybeMakeMover(row, y);
     state.holds.push(...row);
     state.lastRow = row;
   }
@@ -227,6 +230,50 @@
     for (let k = row.length - 1; k >= 0; k--) {
       const other = row[k];
       if (other !== o && Math.abs(other.x - o.x) < (other.w + o.w) / 2 + 10) row.splice(k, 1);
+    }
+  }
+
+  // ---------- Moving ledges ----------
+  const MOVERS_EARLY = new URLSearchParams(location.search).has('moving');
+  const FIRST_MOVER_M = [100, 125];
+  // Height between moving ledges: starts a bit more often than balloons and
+  // tightens as you climb.
+  function moverGapM(m) {
+    const k = clamp((m - FIRST_MOVER_M[0]) / 500, 0, 1);
+    return lerp(30, 8, k) * rand(0.7, 1.3);
+  }
+
+  function maybeMakeMover(row, y) {
+    if (state.phase !== 'playing' || state.nextMoverM == null) return;
+    const m = (y - state.baseY) / UNITS_PER_METER;
+    if (m < state.nextMoverM) return;
+    makeMover(row[(Math.random() * row.length) | 0]);
+    state.nextMoverM = m + moverGapM(m);
+  }
+
+  // Slide back and forth along the long side, each with its own distance and pace.
+  function makeMover(o) {
+    const axis = o.w >= o.h ? 'x' : 'y';
+    let amp = axis === 'x' ? rand(30, 110) : rand(25, 70);
+    let base = o[axis];
+    if (axis === 'x') {
+      const room = (WORLD_W - o.w) / 2 - 6;
+      amp = Math.min(amp, Math.max(room, 15));
+      base = clamp(base, o.w / 2 + 6 + amp, WORLD_W - o.w / 2 - 6 - amp);
+      if (!(base > 0)) base = WORLD_W / 2;
+    }
+    o.move = { axis, base, amp, speed: (Math.PI * 2) / rand(2.5, 5), phase: rand(0, Math.PI * 2) };
+  }
+
+  // Move ledges, and carry any hand holding one along with it.
+  function moveLedges() {
+    for (const o of state.holds) {
+      if (!o.move || o.broken) continue;
+      const mv = o.move;
+      const before = o[mv.axis];
+      o[mv.axis] = mv.base + mv.amp * Math.sin(mv.phase + state.time * mv.speed);
+      const d = o[mv.axis] - before;
+      for (const h of state.hands) if (h.state === 'held' && h.hold === o) h[mv.axis] += d;
     }
   }
 
@@ -354,6 +401,7 @@
   }
 
   function updateLedges(dt) {
+    moveLedges();
     for (const o of state.holds) {
       if (o.swollen) {
         const k = clamp((state.time - o.swollen.at) / 0.35, 0, 1);
