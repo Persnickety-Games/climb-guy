@@ -34,9 +34,7 @@ The rest of the game (also how Endless plays):
 - Skins unlock at new best heights and with badges (`progress.js`); their art is in `skins.js`. Game over shows new badges, unlocks and the next unlock.
 - Progress is saved only in the browser (`localStorage`). There's no server or account, so it doesn't follow you to another device or browser.
 
-**Classic** (`classic/`): the original one-finger version. Drag to slingshot, and the hand auto-grabs near the top of its arc.
-
-Both versions have a ⚙ button with live tuning sliders, saved in your browser.
+The ⚙ button has live tuning sliders, saved in your browser (not used in the daily).
 
 ## Run locally
 
