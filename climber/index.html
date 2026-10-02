@@ -6,7 +6,12 @@
   <meta name="theme-color" content="#0b1d2e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Climber</title>
-  <link rel="stylesheet" href="style.css">
+  <script>
+    // Load the game files with a version stamp so phones never keep running an
+    // old cached copy after an update (at most a minute old).
+    window.CLIMBER_V = Math.floor(Date.now() / 60000);
+    document.write('<link rel="stylesheet" href="style.css?v=' + window.CLIMBER_V + '">');
+  </script>
 </head>
 <body>
   <canvas id="game"></canvas>
@@ -27,7 +32,9 @@
     <div id="share-status" aria-live="polite"></div>
   </div>
 
-  <script src="units.js"></script>
-  <script src="game.js"></script>
+  <script>
+    document.write('<script src="units.js?v=' + window.CLIMBER_V + '"><\/script>' +
+                   '<script src="game.js?v=' + window.CLIMBER_V + '"><\/script>');
+  </script>
 </body>
 </html>
