@@ -83,7 +83,6 @@ window.sfx = (() => {
     pop: () => { noise(0.05, 3000, 1500, 0.35, 'highpass'); tone(900, 400, 0.08, 'square', 0.08); },
     good: () => notes([523, 659, 784], 0.07),
     bad: () => tone(220, 110, 0.35, 'sawtooth', 0.12),
-    star: () => notes([1319, 1760], 0.06, 'sine', 0.18),
     bird: () => { tone(1800, 1200, 0.07, 'square', 0.06); tone(1700, 1100, 0.07, 'square', 0.06, 0.09); },
     scream: () => tone(900, 300, 0.6, 'sawtooth', 0.07),
     crack: () => noise(0.25, 2500, 300, 0.3, 'bandpass', 3),

@@ -17,6 +17,7 @@ Ideas captured for later. Nothing here is built yet unless marked done.
 - **Awards and achievements,** including streaks for consecutive days above certain heights. A missed day resets the streak.
 - **Friend leaderboards.**
 - **Archive** of past daily climbs, so people can replay them after the 24 hours are up.
+- **Stars (idea, removed for now).** Collectibles placed off the safe route. They need a purpose before coming back, for example: every 5 stars spawns a power-up balloon, 10 stars buys one rescue from the water, or stars unlock cosmetics over time. Unlocks fit best with the daily mode's return visits.
 
 ### Technical notes
 
@@ -52,9 +53,7 @@ Balloons pop when a hand passes through them. Green balloons are power-ups. The 
 - "Your best" line, landmarks at real heights, city → clouds → dusk → space.
 - Golden checkpoint ledges and a celebration every 100 m.
 - Icy ledges, wind gusts and birds.
-- Collectible stars.
-- Wordle-style emoji summary in the share text.
 
 ### Decided against
 
-Bouncy ledges, phone vibration, random funny endings, share image.
+Bouncy ledges, phone vibration, random funny endings, share image, and a Wordle-style emoji summary in the share text (tried, then reverted: the emojis needed explaining).

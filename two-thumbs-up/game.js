@@ -66,7 +66,6 @@
   const DRAG_START_PX = 12;  // thumb movement that turns a tap into a throw
   const AIM_WINDOW_MS = 150; // ...but only this soon after touching; after that a grip is locked
   const LEFT = 0, RIGHT = 1;
-  const GAME_NAME = 'Two Thumbs Up';
   const SIDE_COLOR = ['#ff5fa8', '#ffd166']; // left: pink (reads well on the blue sky), right: yellow
 
   // ---------- Canvas ----------
@@ -132,9 +131,6 @@
       best: store.get('climber2.best', 0),
       newBest: false,
       bestAtStart: store.get('climber2.best', 0),
-      starsList: [],           // collectible stars { x, y, got }
-      starCount: 0,
-      popped: [],              // icons of balloons popped this run, for the share text
       birds: [],
       wind: { a: 0, target: 0, until: 0, next: 0 },
       windBits: [],            // streaks and leaves showing the wind
@@ -177,7 +173,6 @@
     state.nextIcyM = ICY_EARLY ? 2 : rand(...FIRST_ICY_M);
     state.windFromM = WIND_EARLY ? 2 : rand(...FIRST_WIND_M);
     state.birdFromM = BIRDS_EARLY ? 2 : rand(...FIRST_BIRD_M);
-    state.nextStarM = rand(8, 14);
     state.nextCheckpointM = CHECKPOINT_EVERY_M;
     state.nextMilestoneM = CHECKPOINT_EVERY_M;
     state.landmarkIdx = 0;
@@ -339,7 +334,7 @@
     // No room in this row; try the next one.
   }
 
-  // ---------- Checkpoints, icy ledges, stars, wind, birds ----------
+  // ---------- Checkpoints, icy ledges, wind, birds ----------
   const PARAMS = new URLSearchParams(location.search);
   const ICY_EARLY = PARAMS.has('icy');
   const WIND_EARLY = PARAMS.has('wind');
@@ -350,7 +345,6 @@
   const FIRST_BIRD_M = [325, 350];
   const ICE_ACCEL = 25;   // how quickly a hand starts sliding on ice
   const ICE_MAX = 80;
-  const STAR_R = 11;
   const BIRD_R = 16;
 
   const climbedM = () => (state.maxY - state.baseY) / UNITS_PER_METER;
@@ -394,32 +388,6 @@
         if (t) { t.mode = 'none'; t.canAim = false; }
       }
     });
-  }
-
-  // Stars to collect, placed off the safe route (near the walls or in open air).
-  function spawnStars() {
-    if (state.phase !== 'playing') return;
-    while (state.baseY + state.nextStarM * UNITS_PER_METER < state.cam + viewH + 600) {
-      const y = state.baseY + state.nextStarM * UNITS_PER_METER;
-      let x = 0;
-      for (let tries = 0; tries < 12; tries++) {
-        x = Math.random() < 0.65 ? (Math.random() < 0.5 ? rand(22, 80) : rand(320, 378)) : rand(40, 360);
-        if (!state.holds.some(o => Math.abs(o.y - y) < 50 && Math.abs(o.x - x) < o.w / 2 + 30)) break;
-      }
-      state.starsList.push({ x, y, got: 0 });
-      state.nextStarM += rand(6, 12);
-    }
-  }
-
-  function collectStars() {
-    for (const st of state.starsList) {
-      if (st.got) continue;
-      if (state.hands.some(h => Math.hypot(h.x - st.x, h.y - st.y) < STAR_R + HAND_R)) {
-        st.got = state.time;
-        state.starCount++;
-        sfx.star();
-      }
-    }
   }
 
   // Wind: gusts push thrown hands sideways. (The aim arc doesn't include the wind.)
@@ -638,7 +606,6 @@
   function applyPower(kind, hand) {
     if (!POWERS[kind]) return;
     state.toast = { kind, at: state.time };
-    state.popped.push(POWERS[kind].icon);
     sfx.pop();
     (POWERS[kind].good ? sfx.good : sfx.bad)();
     if (kind === 'rocket') startRocket();
@@ -991,7 +958,6 @@
     if (state.phase === 'playing') {
       state.maxY = Math.max(state.maxY, body.y);
       popBalloons();
-      collectStars();
       checkCrossings();
     }
     stepMood();
@@ -1173,30 +1139,6 @@
     worldTransform();
   }
 
-  function drawStars() {
-    screenTransform();
-    for (const st of state.starsList) {
-      const sx = ox + st.x * scale, sy = cssH - (st.y - state.cam) * scale;
-      if (sy < -30 || sy > cssH + 30) continue;
-      const k = st.got ? (state.time - st.got) / 0.4 : 0;
-      const r = STAR_R * scale * (1 + k) * (1 + 0.08 * Math.sin(state.time * 5 + st.x));
-      ctx.globalAlpha = 1 - k;
-      ctx.fillStyle = '#ffe14d';
-      ctx.strokeStyle = '#b8860b';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      for (let i = 0; i < 10; i++) {
-        const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r;
-        i ? ctx.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr) : ctx.moveTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-    worldTransform();
-  }
-
   function drawBirds() {
     for (const b of state.birds) {
       const flap = Math.sin(state.time * 14 + b.phase) * 7;
@@ -1340,7 +1282,6 @@
 
     drawMarkers();
     drawBalloons();
-    drawStars();
     drawBirds();
     drawAimArcs();
     drawClimber();
@@ -1680,12 +1621,6 @@
     ctx.font = 'bold 28px system-ui, sans-serif';
     const mText = `${heightMeters()} m`;
     ctx.fillText(mText, ox + 14, top + 26);
-    if (state.starCount) {
-      const w = ctx.measureText(mText).width;
-      ctx.font = 'bold 16px system-ui, sans-serif';
-      ctx.fillStyle = '#ffe14d';
-      ctx.fillText(`⭐ ${state.starCount}`, ox + 24 + w, top + 25);
-    }
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.fillText(`Best ${state.best} m`, ox + 14, top + 46);
@@ -1716,7 +1651,7 @@
       ctx.font = 'bold 34px system-ui, sans-serif';
       ctx.fillText('Splash!', cx, y0);
       ctx.font = '20px system-ui, sans-serif';
-      ctx.fillText(`${heightMeters()} m${state.starCount ? `  ·  ⭐ ${state.starCount}` : ''}`, cx, y0 + 40);
+      ctx.fillText(`${heightMeters()} m`, cx, y0 + 40);
       ctx.font = '15px system-ui, sans-serif';
       ctx.fillStyle = state.newBest ? '#ffd27a' : 'rgba(255,255,255,0.8)';
       ctx.fillText(state.newBest ? 'New best!' : `Best ${state.best} m`, cx, y0 + 68);
@@ -1840,21 +1775,12 @@
     return `${base}?${p}`;
   }
 
-  // Wordle-style summary of the run: height, stars, balloons popped, then the water.
-  function runSummary() {
-    const parts = [`🧗 ${heightMeters()} m`];
-    if (state.starCount) parts.push(`⭐ ${state.starCount}`);
-    if (state.popped.length) parts.push(state.popped.slice(0, 12).join(''));
-    parts.push('🌊');
-    return parts.join(' · ');
-  }
-
   function shareText() {
     const m = heightMeters();
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const u = state.unit;
     const units = u ? ` That's ${unitPhrase(u)}. How many ${u.many} could you climb?` : ' Think you can do better?';
-    return `I climbed ${m} meters before my demise on ${date}.${units}\n${runSummary()}\n${GAME_NAME} 👍👍 ${shareUrl()}`;
+    return `I climbed ${m} meters before my demise on ${date}.${units} 🧗 ${shareUrl()}`;
   }
 
   // Native share sheet on phones; otherwise copy to the clipboard.
@@ -1906,13 +1832,11 @@
           step(DT);
           generateHolds();
           spawnBalloons();
-          spawnStars();
         }
         acc -= DT;
       }
       state.holds = state.holds.filter(h => h.y > state.water - 300);
       state.balloons = state.balloons.filter(b => b.y > state.water - 100 && !(b.popped && state.time - b.popped > 0.4));
-      state.starsList = state.starsList.filter(st => st.y > state.water - 100 && !(st.got && state.time - st.got > 0.4));
     }
     render();
     syncOverlay();
