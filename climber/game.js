@@ -323,6 +323,7 @@
   const BALLOON_GAP_LATE_M = EARLY ? [5, 8] : [20, 35]; // once power-downs have started
   const BALLOON_R = 18;
   const EFFECT_SECS = 10;
+  const OUCH_SECS = 5;
   const BREAK_SECS = 3;                  // hold time before a breakaway ledge crumbles
   const ROCKET_M = 100;
   const ROCKET_SPEED = 1400;
@@ -335,9 +336,11 @@
     butterfingers: { good: false, weight: 2,   icon: '🧈', name: 'Butterfingers', text: 'Both hands let go!' },
     breakaway:     { good: false, weight: 2,   icon: '💥', name: 'Breakaway',     text: `New ledges break after ${BREAK_SECS}s of holding` },
     flood:         { good: false, weight: 2,   icon: '🌊', name: 'Flash flood',   text: 'The water rises 25% faster' },
+    ouch:          { good: false, weight: 2,   icon: '🤕', name: 'Ouch!!',        text: `That hurt! That hand can't grab for ${OUCH_SECS}s`, secs: OUCH_SECS },
   };
 
   const active = (kind) => (state.effects[kind] || 0) > state.time;
+  const hurt = (i) => active(`ouch:${i}`); // this hand can't grab
 
   // Balloons are spaced by height. The first power-down sits exactly where
   // power-downs begin, so every climber who gets that far meets one.
@@ -378,10 +381,12 @@
     };
   }
 
-  function applyPower(kind) {
+  // hand: which hand popped the balloon (Ouch!! only hurts that one).
+  function applyPower(kind, hand) {
     state.toast = { kind, at: state.time };
     if (kind === 'butterfingers') dropEverything();
     else if (kind === 'rocket') startRocket();
+    else if (kind === 'ouch') state.effects[`ouch:${hand}`] = state.time + OUCH_SECS;
     else state.effects[kind] = state.time + EFFECT_SECS;
     if (kind === 'swollen') {
       // Everything already on screen grows now; new arrivals grow as they appear.
@@ -465,9 +470,10 @@
     for (const b of state.balloons) {
       if (b.popped) continue;
       const p = balloonPos(b);
-      if (state.hands.some(h => Math.hypot(h.x - p.x, h.y - p.y) < BALLOON_R + HAND_R)) {
+      const hand = state.hands.findIndex(h => Math.hypot(h.x - p.x, h.y - p.y) < BALLOON_R + HAND_R);
+      if (hand >= 0) {
         b.popped = state.time;
-        applyPower(b.kind);
+        applyPower(b.kind, hand);
       }
     }
   }
@@ -500,7 +506,7 @@
       return;
     }
     const atShoulder = h.state === 'idle' || h.state === 'returning';
-    const hold = holdUnder(h);
+    const hold = hurt(i) ? null : holdUnder(h);
     if (hold) {
       // Tap to grab: only works if the hand is over a ledge right now.
       grab(i, hold);
@@ -672,7 +678,7 @@
       if (h.state === 'flying') {
         advanceHand(h, s, dt);
         const target = h.autoTarget;
-        const o = target && holdUnder(h);
+        const o = target && !hurt(i) && holdUnder(h);
         if (o && (o === target.hold || h.t >= target.t)) {
           grab(i, o); // auto-grab holds on by itself until that thumb touches down
           h.autoHeld = true;
@@ -960,6 +966,15 @@
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R, 0, Math.PI * 2); ctx.stroke();
       }
+      if (hurt(i)) {
+        // Hurt: a pulsing red tint and ring.
+        const pulse = 0.5 + 0.5 * Math.sin(state.time * 10);
+        ctx.fillStyle = `rgba(230, 30, 30, ${0.35 + 0.35 * pulse})`;
+        ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = `rgba(255, 40, 40, ${0.6 + 0.4 * pulse})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R + 2 + pulse * 3, 0, Math.PI * 2); ctx.stroke();
+      }
     });
   }
 
@@ -1085,17 +1100,23 @@
 
   // Active timed effects: icon + a shrinking bar, under the score.
   function drawEffects(y) {
-    for (const [kind, until] of Object.entries(state.effects)) {
+    for (const [key, until] of Object.entries(state.effects)) {
       const left = until - state.time;
       if (left <= 0) continue;
-      const p = POWERS[kind];
+      const p = POWERS[key.split(':')[0]];
       ctx.font = '16px system-ui, sans-serif';
       ctx.fillStyle = '#fff';
       ctx.fillText(p.icon, ox + 14, y + 16);
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.fillRect(ox + 40, y + 7, 60, 6);
       ctx.fillStyle = p.good ? '#3ddc84' : '#ff6b6b';
-      ctx.fillRect(ox + 40, y + 7, 60 * (left / EFFECT_SECS), 6);
+      ctx.fillRect(ox + 40, y + 7, 60 * (left / (p.secs || EFFECT_SECS)), 6);
+      const hand = key.split(':')[1];
+      if (hand !== undefined) {
+        // Which hand is hurt.
+        ctx.fillStyle = SIDE_COLOR[hand];
+        ctx.beginPath(); ctx.arc(ox + 108, y + 10, 4, 0, Math.PI * 2); ctx.fill();
+      }
       y += 24;
     }
   }
@@ -1192,7 +1213,7 @@
   });
 
   // Read-only handle for debugging in the browser console.
-  window.climber = { get state() { return state; }, T, power: (kind) => applyPower(kind) };
+  window.climber = { get state() { return state; }, T, power: (kind, hand = 0) => applyPower(kind, hand) };
 
   newGame();
   requestAnimationFrame(frame);
