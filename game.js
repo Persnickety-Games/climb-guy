@@ -605,9 +605,9 @@
       badge(Progress.noteHeight(state.lastHeightM));
     }
     const secs = state.time - state.startTime;
-    if (m >= 150 && state.runPopped === 0) badge(Progress.award('purist'));
-    if (m >= 100 && secs <= 60) badge(Progress.award('speed'));
-    if (secs >= 300) badge(Progress.award('marathon'));
+    if (m >= 300 && state.runPopped === 0) badge(Progress.award('purist'));
+    if (m >= 150 && sprint()) badge(Progress.award('speed'));
+    if (secs >= 480) badge(Progress.award('marathon'));
     while (m >= state.nextMilestoneM) {
       celebrate(`${state.nextMilestoneM} m!`, 'Checkpoint');
       sfx.milestone();
@@ -636,7 +636,7 @@
       sfx.fling();
     } else if (state.flinging && body.vy < 200) {
       state.flinging = false;
-      if (state.phase === 'playing' && body.y - state.flingFromY >= 20 * UNITS_PER_METER) badge(Progress.award('fling'));
+      if (state.phase === 'playing' && body.y - state.flingFromY >= 30 * UNITS_PER_METER) badge(Progress.award('fling'));
     }
     if (holding) state.screamed = false;
     else if (state.phase === 'playing' && !state.dropping && !state.rocket) state.fallTop = Math.max(state.fallTop ?? body.y, body.y);
@@ -929,7 +929,7 @@
     h.slideDir = 0;
     h.slideV = 0;
     sfx.grab();
-    if (state.fallTop != null && state.fallTop - state.body.y >= 10 * UNITS_PER_METER) badge(Progress.award('freefall'));
+    if (state.fallTop != null && state.fallTop - state.body.y >= 20 * UNITS_PER_METER) badge(Progress.award('freefall'));
     state.fallTop = null;
     // Auto-grab: holding is automatic, and the other hand lets go once this one
     // has hold of something new. A hand left auto-held after the timer ends also
@@ -1925,7 +1925,7 @@
         lines.push(['Equip them with 🎨 Customize', 'rgba(255,255,255,0.75)']);
       }
       const next = Progress.nextUnlock();
-      if (next && !sprint()) lines.push([`Next unlock: ${next.m - state.best} m more for the ${next.label}`, 'rgba(255,255,255,0.75)']);
+      if (next && !sprint()) lines.push([next.text, 'rgba(255,255,255,0.75)']);
       let ly = y0 + 300;
       for (const [text, color] of lines) {
         ctx.fillStyle = color;

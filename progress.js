@@ -29,44 +29,50 @@ window.Progress = (() => {
   // the game (award) or at the end of a run (recordRun).
   const BADGES = [
     { id: 'first', icon: '🤚', name: 'First Grip', desc: 'Catch your first ledge.' },
-    { id: 'm50', icon: '🥉', name: '50 m', desc: 'Climb 50 m in one run.', best: 50 },
-    { id: 'm100', icon: '🥈', name: '100 m', desc: 'Climb 100 m in one run.', best: 100 },
-    { id: 'm250', icon: '🥇', name: '250 m', desc: 'Climb 250 m in one run.', best: 250 },
-    { id: 'm500', icon: '🏆', name: '500 m', desc: 'Climb 500 m in one run.', best: 500 },
-    { id: 'm1000', icon: '👑', name: '1 km', desc: 'Climb 1,000 m in one run.', best: 1000 },
-    { id: 'fling', icon: '💪', name: 'Fling King', desc: 'Gain 20 m in a single fling.' },
+    { id: 'm100', icon: '🥉', name: '100 m', desc: 'Climb 100 m in one run.', best: 100 },
+    { id: 'm500', icon: '🥈', name: '500 m', desc: 'Climb 500 m in one run.', best: 500 },
+    { id: 'm1000', icon: '🥇', name: '1 km', desc: 'Climb 1,000 m in one run.', best: 1000 },
+    { id: 'm2000', icon: '🏆', name: '2 km', desc: 'Climb 2,000 m in one run.', best: 2000 },
+    { id: 'fling', icon: '💪', name: 'Fling King', desc: 'Gain 30 m in a single fling.' },
     { id: 'clutch', icon: '😅', name: 'Clutch', desc: 'Get within 1 m of the water, then climb 10 m clear.' },
-    { id: 'freefall', icon: '🪂', name: 'Freefall', desc: 'Catch a ledge after falling 10 m.' },
-    { id: 'purist', icon: '🧘', name: 'Purist', desc: 'Reach 150 m without popping a balloon.' },
-    { id: 'speed', icon: '⚡', name: 'Speedrun', desc: 'Reach 100 m within 60 seconds.' },
-    { id: 'marathon', icon: '⏱️', name: 'Marathon', desc: 'Survive 5 minutes in one run.' },
-    { id: 'balloons', icon: '🎈', name: 'Balloon Animal', desc: 'Pop 25 balloons in total.' },
-    { id: 'rocket', icon: '🚀', name: 'Rocket Rider', desc: 'Pop a rocket balloon.' },
+    { id: 'freefall', icon: '🪂', name: 'Freefall', desc: 'Catch a ledge after falling 20 m.' },
+    { id: 'purist', icon: '🧘', name: 'Purist', desc: 'Reach 300 m without popping a balloon.' },
+    { id: 'speed', icon: '⚡', name: 'Speedrun', desc: 'Reach 150 m in a Sprint.' },
+    { id: 'marathon', icon: '⏱️', name: 'Marathon', desc: 'Survive 8 minutes in one run.' },
+    { id: 'balloons', icon: '🎈', name: 'Balloon Animal', desc: 'Pop 50 balloons in total.' },
+    { id: 'rocket', icon: '🚀', name: 'Rocket Rider', desc: 'Ride 3 rockets in total.' },
     { id: 'allpowers', icon: '🌈', name: 'Tried Everything', desc: 'Pop every kind of balloon.' },
-    { id: 'regular', icon: '📅', name: 'Regular', desc: 'Play on 3 different days.' },
-    { id: 'dedicated', icon: '🔁', name: 'Dedicated', desc: 'Play 50 runs.' },
+    { id: 'regular', icon: '📅', name: 'Regular', desc: 'Play on 5 different days.' },
+    { id: 'dedicated', icon: '🔁', name: 'Dedicated', desc: 'Play 100 runs.' },
     { id: 'streak7', icon: '🔥', name: 'On a Roll', desc: 'Play the daily 7 days in a row.' },
-    { id: 'km1', icon: '🥾', name: 'Hiker', desc: 'Climb 1,000 m in total.' },
-    { id: 'km10', icon: '🏔️', name: 'Mountaineer', desc: 'Climb 10,000 m in total.' },
+    { id: 'streak30', icon: '🗓️', name: 'Habit Forming', desc: 'Play the daily 30 days in a row.' },
+    { id: 'km5', icon: '🥾', name: 'Hiker', desc: 'Climb 5 km in total.' },
+    { id: 'km25', icon: '🏔️', name: 'Mountaineer', desc: 'Climb 25 km in total.' },
+    { id: 'km100', icon: '🛰️', name: 'Orbit', desc: 'Climb 100 km in total.' },
     { id: 'fooled', icon: '👻', name: 'Fooled', desc: 'Try to grab a ghost ledge.' },
-    { id: 'birdbrain', icon: '🐦', name: 'Bird Brain', desc: 'Get knocked by birds 5 times.' },
+    { id: 'birdbrain', icon: '🐦', name: 'Bird Brain', desc: 'Get knocked by birds 10 times.' },
     { id: 'splash', icon: '💦', name: 'Splash Landing', desc: 'Fall in the water below 5 m.' },
     { id: 'doubleouch', icon: '🤕', name: 'Double Ouch', desc: 'Have both hands hurt at once.' },
   ];
 
-  // What unlocks each skin item: { best: m } or { badge: id }. Missing = free.
+  // What unlocks each skin item. Missing = free. Most come from climbing over
+  // time, so they arrive steadily however good you are:
+  //   { total: m }  climbed in total (all runs added up, not Sprint)
+  //   { dailies: n } dailies played
+  //   { best: m }   reached in one run (the bragging ones)
+  //   { badge: id }
   const UNLOCKS = {
-    body: { green: { best: 25 }, purple: { best: 50 }, red: { badge: 'fling' }, gold: { best: 500 }, stripes: { badge: 'dedicated' }, polka: { badge: 'balloons' } },
-    hat: { party: { badge: 'first' }, bucket: { best: 75 }, cowboy: { badge: 'freefall' }, propeller: { best: 150 }, tophat: { badge: 'clutch' }, crown: { best: 250 }, astronaut: { best: 400 } },
+    body: { green: { total: 500 }, purple: { total: 2000 }, red: { badge: 'fling' }, gold: { best: 1000 }, stripes: { badge: 'dedicated' }, polka: { badge: 'balloons' } },
+    hat: { party: { badge: 'first' }, bucket: { total: 1000 }, cowboy: { badge: 'freefall' }, propeller: { total: 5000 }, tophat: { badge: 'clutch' }, crown: { best: 750 }, astronaut: { best: 1500 } },
     face: {
-      freckles: { best: 15 }, clown: { best: 40 }, sunglasses: { best: 100 }, roundspecs: { best: 125 }, scar: { best: 175 },
-      eyepatch: { best: 225 }, warpaint: { best: 350 }, mustache: { badge: 'birdbrain' }, monocle: { badge: 'fooled' },
-      disguise: { badge: 'regular' }, glasses3d: { badge: 'km1' }, hearts: { badge: 'streak7' }, beard: { badge: 'km10' },
+      freckles: { total: 250 }, clown: { total: 750 }, sunglasses: { total: 3000 }, roundspecs: { dailies: 5 }, scar: { total: 7500 },
+      eyepatch: { dailies: 10 }, warpaint: { total: 12000 }, mustache: { badge: 'birdbrain' }, monocle: { badge: 'fooled' },
+      disguise: { badge: 'regular' }, glasses3d: { total: 20000 }, hearts: { badge: 'streak7' }, beard: { total: 40000 },
     },
-    color: { orange: { best: 25 }, purple: { best: 75 }, red: { badge: 'speed' }, black: { badge: 'splash' }, gold: { best: 500 }, rainbow: { best: 300 } },
-    backdrop: { sunset: { best: 50 }, night: { best: 100 }, forest: { badge: 'purist' }, candy: { badge: 'allpowers' }, synthwave: { best: 750 } },
-    ledges: { wood: { best: 35 }, stone: { best: 150 }, candy: { badge: 'rocket' }, neon: { best: 200 }, gold: { best: 1000 } },
-    water: { slime: { badge: 'doubleouch' }, chocolate: { badge: 'marathon' }, lava: { best: 300 } },
+    color: { orange: { total: 150 }, purple: { total: 1500 }, red: { badge: 'speed' }, black: { badge: 'splash' }, gold: { best: 500 }, rainbow: { dailies: 30 } },
+    backdrop: { sunset: { total: 4000 }, night: { total: 10000 }, forest: { badge: 'purist' }, candy: { badge: 'allpowers' }, synthwave: { total: 30000 } },
+    ledges: { wood: { total: 2500 }, stone: { total: 6000 }, candy: { badge: 'rocket' }, neon: { dailies: 20 }, gold: { best: 2000 } },
+    water: { slime: { badge: 'doubleouch' }, chocolate: { badge: 'marathon' }, lava: { total: 8000 } },
   };
 
   // The customize screen's slots, which list each slot draws from, and the default.
@@ -110,6 +116,8 @@ window.Progress = (() => {
     const saved = JSON.parse(localStorage.getItem(KEY));
     if (saved) p = Object.assign(blank(), saved);
   } catch {}
+  // Drop badges that no longer exist (the list was rebalanced).
+  for (const id of Object.keys(p.badges)) if (!BADGES.some(b => b.id === id)) delete p.badges[id];
 
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(p)); } catch {}
@@ -120,16 +128,22 @@ window.Progress = (() => {
   function requirementMet(req) {
     if (!req) return true;
     if (req.best != null) return p.best >= req.best;
+    if (req.total != null) return p.totalM >= req.total;
+    if (req.dailies != null) return Object.keys(p.daily).length >= req.dailies;
     if (req.badge) return has(req.badge);
     return true;
   }
 
   const isUnlocked = (kind, id) => requirementMet((UNLOCKS[kind] || {})[id]);
 
+  const fmtM = (m) => (m >= 1000 ? `${+(m / 1000).toFixed(1)} km` : `${m} m`);
+
   function requirementText(kind, id) {
     const req = (UNLOCKS[kind] || {})[id];
     if (!req) return '';
-    if (req.best != null) return `Reach ${req.best} m`;
+    if (req.best != null) return `Reach ${fmtM(req.best)} in one run`;
+    if (req.total != null) return `Climb ${fmtM(req.total)} in total`;
+    if (req.dailies != null) return `Play ${req.dailies} dailies`;
     const b = BADGES.find(x => x.id === req.badge);
     return b ? `Badge: ${b.name}` : '';
   }
@@ -189,8 +203,9 @@ window.Progress = (() => {
     p.popped++;
     p.kinds[kind] = true;
     const got = [];
-    if (p.popped >= 25) got.push(award('balloons'));
-    if (kind === 'rocket') got.push(award('rocket'));
+    if (kind === 'rocket') p.rockets = (p.rockets || 0) + 1;
+    if (p.popped >= 50) got.push(award('balloons'));
+    if (p.rockets >= 3) got.push(award('rocket'));
     if (POWER_KINDS.every(k => p.kinds[k])) got.push(award('allpowers'));
     save();
     return got.filter(Boolean);
@@ -199,7 +214,7 @@ window.Progress = (() => {
   function noteBirdHit() {
     p.birdHits++;
     save();
-    return p.birdHits >= 5 ? award('birdbrain') : null;
+    return p.birdHits >= 10 ? award('birdbrain') : null;
   }
 
   // Mark a landmark reached; returns true the first time.
@@ -231,14 +246,16 @@ window.Progress = (() => {
     p.totalSecs += secs;
     p.days[dayKey()] = true;
     for (const b of BADGES) if (b.best != null && p.best >= b.best) award(b.id);
-    if (Object.keys(p.days).length >= 3) award('regular');
-    if (p.totalRuns >= 50) award('dedicated');
-    if (p.totalM >= 1000) award('km1');
-    if (p.totalM >= 10000) award('km10');
+    if (Object.keys(p.days).length >= 5) award('regular');
+    if (p.totalRuns >= 100) award('dedicated');
+    if (p.totalM >= 5000) award('km5');
+    if (p.totalM >= 25000) award('km25');
+    if (p.totalM >= 100000) award('km100');
     if (splash) award('splash');
     if (daily) {
       p.daily[daily.key] = { m, n: daily.n };
       if (dailyStreak(daily.key) >= 7) award('streak7');
+      if (dailyStreak(daily.key) >= 30) award('streak30');
     }
     save();
     const after = unlockedSet();
@@ -275,22 +292,27 @@ window.Progress = (() => {
     p.sprintBest = Math.max(p.sprintBest, m);
     p.sprintRuns++;
     p.days[dayKey()] = true;
-    if (Object.keys(p.days).length >= 3) award('regular');
+    if (Object.keys(p.days).length >= 5) award('regular');
     save();
     const after = unlockedSet();
     return { isBest, newBadges: [], newUnlocks: [...after].filter(k => !before.has(k)).map(unlockLabel) };
   }
 
   // The closest height-based unlock you haven't reached yet.
+  // What to aim for next: the nearest unlock from total climbing (it always
+  // gets closer), or else the nearest one-run height. Returns { text } or null.
   function nextUnlock() {
-    let best = null;
+    let total = null, best = null;
     for (const [kind, items] of Object.entries(UNLOCKS)) {
       for (const [id, req] of Object.entries(items)) {
-        if (req.best == null || p.best >= req.best) continue;
-        if (!best || req.best < best.m) best = { m: req.best, label: unlockLabel(`${kind}:${id}`) };
+        const label = unlockLabel(`${kind}:${id}`);
+        if (req.total != null && p.totalM < req.total && (!total || req.total < total.m)) total = { m: req.total, label };
+        if (req.best != null && p.best < req.best && (!best || req.best < best.m)) best = { m: req.best, label };
       }
     }
-    return best;
+    if (total) return { text: `Next unlock: climb ${fmtM(Math.ceil(total.m - p.totalM))} more for the ${total.label}` };
+    if (best) return { text: `Next unlock: reach ${fmtM(best.m)} in one run for the ${best.label}` };
+    return null;
   }
 
   function stats() {
