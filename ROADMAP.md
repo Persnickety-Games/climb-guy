@@ -12,7 +12,7 @@ Ideas captured for later. Nothing here is built yet unless marked done.
   - a third hand
   - two climbers, one per hand, and you keep both alive
   - more ideas to come; the more creative the better
-- **Easy sharing.** One tap shares the day's result as text plus a link to the site, like Wordle or MapTap. This viral loop matters.
+- **Easy sharing.** One tap shares the day's result as text plus a link to the site, like Wordle or MapTap. This viral loop matters. *(Started: game over has a Share button with the height in a random absurd unit, the date and the link. The daily version will add the day's number.)*
 - **Personal records.** Track high scores over time.
 - **Awards and achievements,** including streaks for consecutive days above certain heights. A missed day resets the streak.
 - **Friend leaderboards.**

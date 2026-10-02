@@ -746,6 +746,7 @@
   function gameOver() {
     state.phase = 'over';
     state.overAt = state.time;
+    state.unit = pickUnit(heightMeters());
     const m = heightMeters();
     if (m > state.best) {
       state.best = m;
@@ -1118,8 +1119,14 @@
       ctx.font = '15px system-ui, sans-serif';
       ctx.fillStyle = state.newBest ? '#ffd27a' : 'rgba(255,255,255,0.8)';
       ctx.fillText(state.newBest ? 'New best!' : `Best ${state.best} m`, cx, cssH * 0.4 + 68);
+      if (state.unit) {
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.font = 'italic 14px system-ui, sans-serif';
+        ctx.fillText(`That's ${unitPhrase(state.unit)}`, cx, cssH * 0.4 + 94);
+      }
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText('Tap to climb again', cx, cssH * 0.4 + 110);
+      ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Tap anywhere to climb again', cx, cssH * 0.4 + 190);
     }
     ctx.textAlign = 'left';
   }
@@ -1179,6 +1186,74 @@
     ctx.globalAlpha = 1;
   }
 
+  // ---------- Sharing ----------
+  const overActions = document.getElementById('over-actions');
+  const shareStatus = document.getElementById('share-status');
+
+  // Pick a random absurd unit that gives a fun-sized number.
+  function pickUnit(meters) {
+    const units = window.CLIMBER_UNITS || [];
+    if (!units.length) return null;
+    const fits = units.filter(([, , h]) => meters / h >= 1.5 && meters / h <= 50000);
+    const pool = fits.length ? fits : units;
+    const [one, many, h] = pool[(Math.random() * pool.length) | 0];
+    return { one, many, count: meters / h };
+  }
+
+  function formatCount(n) {
+    if (n === 0) return '0';
+    if (n < 10) return String(Math.round(n * 10) / 10);
+    return Math.round(n).toLocaleString('en-US');
+  }
+
+  function unitPhrase(u) {
+    const n = formatCount(u.count);
+    return `${n} ${n === '1' ? u.one : u.many}`;
+  }
+
+  function shareText() {
+    const m = heightMeters();
+    const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const url = location.origin + location.pathname;
+    const u = state.unit;
+    const units = u ? ` That's ${unitPhrase(u)}. How many ${u.many} could you climb?` : '';
+    return `I climbed ${m} meters before my demise on ${date}.${units} 🧗 ${url}`;
+  }
+
+  // Native share sheet on phones; otherwise copy to the clipboard.
+  async function share() {
+    const text = shareText();
+    shareStatus.textContent = '';
+    try {
+      if (navigator.share) {
+        await navigator.share({ text });
+        return;
+      }
+    } catch (e) {
+      if (e && e.name === 'AbortError') return; // closed the share sheet
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      shareStatus.textContent = 'Copied! Paste it anywhere.';
+    } catch {
+      shareStatus.textContent = text; // last resort: show it to copy by hand
+    }
+  }
+
+  document.getElementById('share-btn').addEventListener('click', share);
+  document.getElementById('reroll-btn').addEventListener('click', () => {
+    state.unit = pickUnit(heightMeters());
+    shareStatus.textContent = '';
+  });
+
+  function syncOverlay() {
+    const show = state.phase === 'over' && tunePanel.hidden;
+    if (overActions.hidden === show) { // only touch the DOM when it changes
+      overActions.hidden = !show;
+      if (!show) shareStatus.textContent = '';
+    }
+  }
+
   // ---------- Loop ----------
   let last = performance.now();
   let acc = 0;
@@ -1201,6 +1276,7 @@
       state.balloons = state.balloons.filter(b => b.y > state.water - 100 && !(b.popped && state.time - b.popped > 0.4));
     }
     render();
+    syncOverlay();
     requestAnimationFrame(frame);
   }
 
@@ -1239,7 +1315,7 @@
   });
 
   // Read-only handle for debugging in the browser console.
-  window.climber = { get state() { return state; }, T, power: (kind, hand = 0) => applyPower(kind, hand) };
+  window.climber = { get state() { return state; }, T, power: (kind, hand = 0) => applyPower(kind, hand), shareText: () => shareText() };
 
   newGame();
   requestAnimationFrame(frame);
