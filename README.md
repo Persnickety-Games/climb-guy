@@ -39,7 +39,7 @@ Developer tuning: add `?tune` to an Endless or Sprint link (e.g. `?mode=endless&
 ## Feedback and analytics
 
 - **Feedback** (`feedback.js`): a free-text box (☰ menu footer, and the daily's done screen) that posts to a Google Form, with mode, bests, screen size and browser attached. Set `FORM` to the form id and entry ids. The button stays hidden until then.
-- **Analytics** (`analytics.js`): GoatCounter, free, no cookies, visitors by country and region. Events: `visitor-new` and `visitor-returning` (worked out on the device, once a day), `daily-played`, `endless-run`, `sprint-run`, `share-<mode>`, `feedback-sent`. Set `CODE` to the GoatCounter site code. It only runs on https://climbguy.xyz.
+- **Analytics** (`analytics.js`): GoatCounter, free, no cookies, visitors by country and region. Events: `visitor-new` and `visitor-returning` (worked out on the device, once a day). Open `climbguy.xyz/#toggle-goatcounter` to stop or restart counting your own browser; the game handles it with a small note instead of GoatCounter's pop-up, `daily-played`, `endless-run`, `sprint-run`, `share-<mode>`, `feedback-sent`. Set `CODE` to the GoatCounter site code. It only runs on https://climbguy.xyz.
 
 ## Run locally
 

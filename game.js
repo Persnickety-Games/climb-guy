@@ -103,6 +103,7 @@
   resize();
 
   function checkSize() {
+    if (window.scrollY || window.scrollX) window.scrollTo(0, 0); // never leave the page scrolled
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (w && h && (w !== cssW || h !== cssH || Math.min(window.devicePixelRatio || 1, 3) !== dpr)) resize();
   }
