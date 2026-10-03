@@ -845,7 +845,7 @@
 
   function onDown(e) {
     sfx.unlock(); // browsers only allow sound after a touch
-    if (!tunePanel.hidden || Menu.isOpen()) return;
+    if (!tunePanel.hidden || Menu.isOpen() || Feedback.isOpen()) return;
     e.preventDefault();
     if (state.phase === 'over') {
       // The daily is one run a day: afterwards, back to the start screen.
@@ -1147,6 +1147,7 @@
     }
     state.newBest = state.result.isBest;
     state.best = modeBest();
+    if (climbing) Analytics.event(daily() ? 'daily-played' : `${mode}-run`);
   }
 
   // ---------- Rendering ----------
@@ -2070,6 +2071,7 @@
   // Native share sheet on phones; otherwise copy to the clipboard.
   async function share(text = shareText(), shareStatus = document.getElementById('share-status')) {
     shareStatus.textContent = '';
+    Analytics.event(`share-${/^Climb Guy #/.test(text) ? 'daily' : mode}`);
     try {
       if (navigator.share) {
         await navigator.share({ text });
@@ -2107,7 +2109,7 @@
   function frame(now) {
     const elapsed = Math.min(0.1, (now - last) / 1000);
     last = now;
-    if (started && tunePanel.hidden && !Menu.isOpen()) { // paused on the start screen and while the tuning panel or menu is open
+    if (started && tunePanel.hidden && !Menu.isOpen() && !Feedback.isOpen()) { // paused on the start screen and while the tuning panel or menu is open
       acc += elapsed;
       while (acc >= DT) {
         state.time += DT;
@@ -2257,6 +2259,14 @@
     skin = Progress.equipped();
     last = performance.now(); // don't fast-forward the time spent in the menu
   };
+
+  // Details sent along with feedback, to help with bugs.
+  Feedback.details = () => [
+    `mode ${mode}`, `daily #${Daily.today().n}${Progress.dailyResult(Daily.today().key) ? ' (played)' : ''}`,
+    `best ${Progress.best} m`, `dailies ${Progress.stats().totalRuns}`,
+    `endless best ${Progress.endlessBest} m`, `sprint best ${Progress.sprintBest} m`,
+    `screen ${innerWidth}x${innerHeight}@${devicePixelRatio}`, navigator.userAgent,
+  ].join(' · ');
 
   // Read-only handle for debugging in the browser console.
   window.climber = { get state() { return state; }, get mode() { return mode; }, T, power: (kind, hand = 0) => applyPower(kind, hand), shareText: () => shareText() };

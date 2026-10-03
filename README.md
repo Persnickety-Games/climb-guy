@@ -36,6 +36,11 @@ The rest of the game (also how Endless plays):
 
 Developer tuning: add `?tune` to an Endless or Sprint link (e.g. `?mode=endless&tune`) to get the ⚙ button with live tuning sliders, saved in your browser. Runs played with it don't count for anything, and players without `?tune` always get the defaults.
 
+## Feedback and analytics
+
+- **Feedback** (`feedback.js`): a free-text box (☰ menu footer, and the daily's done screen) that posts to a Google Form, with mode, bests, screen size and browser attached. Set `FORM` to the form id and entry ids. The button stays hidden until then.
+- **Analytics** (`analytics.js`): GoatCounter, free, no cookies, visitors by country and region. Events: `visitor-new` and `visitor-returning` (worked out on the device, once a day), `daily-played`, `endless-run`, `sprint-run`, `share-<mode>`, `feedback-sent`. Set `CODE` to the GoatCounter site code. It only runs on https://climbguy.xyz.
+
 ## Run locally
 
 Open `index.html` in a browser, or serve the folder:
