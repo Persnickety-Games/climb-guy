@@ -36,6 +36,10 @@ The rest of the game (also how Endless plays):
 
 Developer tuning: add `?tune` to an Endless or Sprint link (e.g. `?mode=endless&tune`) to get the ⚙ button with live tuning sliders, saved in your browser. Runs played with it don't count for anything, and players without `?tune` always get the defaults.
 
+## How to play
+
+`tutorial.js`: five illustrated cards with small looping animations (sides, throw, grab and hold, fling, water and the daily). They open automatically on a brand-new player's first visit (Skip or swipe through), and any time from "❓ How to play" at the bottom of the ☰ menu. The game pauses while they're open.
+
 ## Feedback and analytics
 
 - **Feedback** (`feedback.js`): a free-text box (☰ menu footer, and the daily's done screen) that posts to a Google Form, with mode, bests, screen size and browser attached. Set `FORM` to the form id and entry ids. The button stays hidden until then.

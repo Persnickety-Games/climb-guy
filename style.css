@@ -310,8 +310,8 @@ canvas { display: block; }
 
 /* Feedback */
 .menu-foot { border-top: 1px solid var(--grid); padding: 8px 16px max(8px, env(safe-area-inset-bottom)); text-align: center; }
-.menu-foot:has(.feedback-btn[hidden]) { display: none; }
-.feedback-btn {
+.menu-foot { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; }
+.feedback-btn, .tutorial-btn {
   border: 0; background: none; color: #7cc6ff; cursor: pointer;
   font: 600 14px system-ui, sans-serif; padding: 6px 10px;
 }
@@ -345,3 +345,33 @@ canvas { display: block; }
 .fb-actions #fb-send { background: #ffd166; color: #1b1b1b; }
 .fb-actions button:disabled { opacity: 0.6; }
 #fb-status { margin: 10px 0 0; font-size: 14px; min-height: 1em; }
+
+/* How to play */
+#tutorial {
+  position: fixed; inset: 0; z-index: 25;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(5, 12, 22, 0.75);
+}
+#tutorial[hidden] { display: none; }
+.tut-panel {
+  width: 100%; max-width: 380px; background: #10243a; color: #fff;
+  border-radius: 18px; padding: 14px 16px 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+.tut-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.tut-step { font-size: 13px; color: rgba(255, 255, 255, 0.6); font-variant-numeric: tabular-nums; }
+.tut-skip { border: 0; background: none; color: #7cc6ff; font: 600 14px system-ui, sans-serif; padding: 4px 6px; cursor: pointer; }
+.tut-skip[hidden] { visibility: hidden; display: inline; }
+.tut-art { width: 100%; aspect-ratio: 300 / 190; border-radius: 12px; touch-action: pan-y; }
+.tut-title { margin: 14px 0 6px; font-size: 20px; }
+.tut-text { margin: 0; font-size: 15px; line-height: 1.45; color: rgba(255, 255, 255, 0.85); min-height: 5.8em; }
+.tut-dots { display: flex; justify-content: center; gap: 6px; margin: 14px 0 12px; }
+.tut-dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); }
+.tut-dots span.on { background: #ffd166; }
+.tut-actions { display: flex; gap: 8px; }
+.tut-actions button {
+  flex: 1; border: 0; border-radius: 999px; padding: 12px; cursor: pointer;
+  font: 700 16px system-ui, sans-serif; background: rgba(255, 255, 255, 0.14); color: #fff;
+}
+.tut-actions .tut-next { background: #ffd166; color: #1b1b1b; }
+.tut-actions button[hidden] { display: none; }

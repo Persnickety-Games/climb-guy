@@ -846,7 +846,7 @@
 
   function onDown(e) {
     sfx.unlock(); // browsers only allow sound after a touch
-    if (!tunePanel.hidden || Menu.isOpen() || Feedback.isOpen()) return;
+    if (!tunePanel.hidden || Menu.isOpen() || Feedback.isOpen() || Tutorial.isOpen()) return;
     e.preventDefault();
     if (state.phase === 'over') {
       // The daily is one run a day: afterwards, back to the start screen.
@@ -2110,7 +2110,7 @@
   function frame(now) {
     const elapsed = Math.min(0.1, (now - last) / 1000);
     last = now;
-    if (started && tunePanel.hidden && !Menu.isOpen() && !Feedback.isOpen()) { // paused on the start screen and while the tuning panel or menu is open
+    if (started && tunePanel.hidden && !Menu.isOpen() && !Feedback.isOpen() && !Tutorial.isOpen()) { // paused on the start screen and while the tuning panel or menu is open
       acc += elapsed;
       while (acc >= DT) {
         state.time += DT;
@@ -2275,5 +2275,6 @@
   newGame();
   renderStart();
   startEl.focus();
+  if (Tutorial.shouldShow) Tutorial.open(true); // a brand-new player's first visit
   requestAnimationFrame(frame);
 })();

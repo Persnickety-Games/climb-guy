@@ -79,7 +79,21 @@
         <button class="menu-close" aria-label="Close">✕</button>
       </header>
       <div class="menu-body"></div>
-      <footer class="menu-foot"><button class="feedback-btn" hidden>💬 Send feedback</button></footer>
+      <footer class="menu-foot">
+        <button class="tutorial-btn">❓ How to play</button>
+        <button class="feedback-btn" hidden>💬 Send feedback</button>
+      </footer>
+    </div>
+  </div>
+
+  <div id="tutorial" hidden>
+    <div class="tut-panel" role="dialog" aria-label="How to play">
+      <div class="tut-top"><span class="tut-step"></span><button class="tut-skip">Skip</button></div>
+      <canvas class="tut-art"></canvas>
+      <h2 class="tut-title"></h2>
+      <p class="tut-text"></p>
+      <div class="tut-dots"></div>
+      <div class="tut-actions"><button class="tut-back">Back</button><button class="tut-next">Next</button></div>
     </div>
   </div>
 
@@ -106,6 +120,7 @@
   <script>
     document.write('<script src="analytics.js?v=' + window.CLIMBER_V + '"><\/script>' +
                    '<script src="feedback.js?v=' + window.CLIMBER_V + '"><\/script>' +
+                   '<script src="tutorial.js?v=' + window.CLIMBER_V + '"><\/script>' +
                    '<script src="units.js?v=' + window.CLIMBER_V + '"><\/script>' +
                    '<script src="game.js?v=' + window.CLIMBER_V + '"><\/script>');
   </script>
