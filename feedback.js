@@ -6,7 +6,7 @@ window.Feedback = (() => {
   'use strict';
 
   // From the form's pre-filled link: the form id and each question's entry id.
-  const FORM = { id: '', text: '', contact: '', details: '' };
+  const FORM = { id: '1FAIpQLSfmUa8cUAXRb13Ujz_diOPWnbTgM5MMkEAl2oqqjk78QzFLWQ', text: 'entry.469991993', contact: 'entry.1451942521', details: 'entry.1587950725' };
   const ready = !!(FORM.id && FORM.text);
 
   const $ = (id) => document.getElementById(id);
