@@ -12,8 +12,8 @@ html, body {
 
 /* Pinned to the window (like the overlays), so it always fills whatever the
    browser shows, even when its toolbars or a pop-up change the size. */
-canvas {
-  display: block;
+canvas { display: block; }
+#game {
   position: fixed;
   inset: 0;
   width: 100%;
