@@ -10,7 +10,7 @@
 window.Analytics = (() => {
   'use strict';
 
-  const CODE = ''; // the GoatCounter site code, e.g. 'climbguy' for climbguy.goatcounter.com
+  const CODE = 'persnickety-games'; // the GoatCounter site code: persnickety-games.goatcounter.com
   const live = !!CODE && location.protocol === 'https:' && location.hostname === 'climbguy.xyz';
   const queue = [];
 
