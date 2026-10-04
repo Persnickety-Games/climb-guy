@@ -850,7 +850,7 @@
     e.preventDefault();
     if (state.phase === 'over') {
       // The daily is one run a day: afterwards, back to the start screen.
-      if (state.time - state.overAt > 0.6) { if (daily()) showStart(); else newGame(); }
+      if (state.time - state.overAt > 0.6) { if (daily() && !state.missed) showStart(); else newGame(); }
       return;
     }
     if (state.rocket) return;
@@ -1130,6 +1130,12 @@
     const climbing = state.phase === 'playing';
     state.phase = 'over';
     state.overAt = state.time;
+    // Never caught a ledge on the way in: that doesn't count as a run (not
+    // even the daily's one run a day). Tap to try the drop again.
+    if (!climbing) {
+      state.missed = true;
+      return;
+    }
     state.unit = pickUnit(heightMeters());
     const m = heightMeters();
     state.timeUp = sprint() && climbing && state.water < state.body.y;
@@ -1901,6 +1907,21 @@
         ctx.font = '12px system-ui, sans-serif';
         ctx.fillText('then keep holding', hx, by + 46);
       });
+    } else if (state.phase === 'over' && state.missed) {
+      // Missed the catch on the way in: no run, just try again.
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0, 0, cssW, cssH);
+      const y0 = cssH * 0.36, maxW = Math.min(cssW - 32, WORLD_W * scale - 16);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 32px system-ui, sans-serif';
+      ctx.fillText('Missed the catch!', cx, y0);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      fitText('Tap as a hand passes a ledge on the way in.', cx, y0 + 40, maxW, 16);
+      ctx.fillStyle = '#7dffb0';
+      fitText(daily() ? "No worries, this one doesn't count toward today's daily." : "No worries, this one doesn't count.", cx, y0 + 68, maxW, 15);
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Tap anywhere to try again', cx, y0 + 120);
     } else if (state.phase === 'over') {
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0, 0, cssW, cssH);
@@ -2096,7 +2117,7 @@
   });
 
   function syncOverlay() {
-    const show = started && state.phase === 'over' && tunePanel.hidden && !Menu.isOpen();
+    const show = started && state.phase === 'over' && !state.missed && tunePanel.hidden && !Menu.isOpen();
     if (overActions.hidden === show) { // only touch the DOM when it changes
       overActions.hidden = !show;
       if (!show) shareStatus.textContent = '';

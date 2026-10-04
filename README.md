@@ -5,7 +5,7 @@ A browser climbing game by Persnickety Games. Plain HTML/CSS/JS with no build st
 Mobile, two thumbs, two hands. A blurred start screen waits for a tap, then the climber drops in.
 
 **The daily** is the main event and what the start screen offers. There's one run per day, and everyone gets the same level. The day changes at midnight US Eastern for everyone (`daily.js`). The level comes from a seed made from the date. Ledges, moving, ghost and icy ledges, balloons, wind and birds each get their own seeded random stream, and wind and birds come at set heights. Water speed, ledge sizes and spacing, and feature and balloon frequency get small per-day nudges. Heights count from the ground, the drop starts at the same spot on every screen, and the ⚙ tuning is ignored, so scores compare directly.
-- Leaving or reloading mid-run still uses up the day (the height so far is saved as you climb).
+- Leaving or reloading mid-run still uses up the day (the height so far is saved as you climb). Missing the catch on the way in (never grabbing a ledge) doesn't count, in any mode: "Missed the catch!", then tap to try the drop again.
 - Afterwards the start screen shows your result, your streak, a countdown to the next daily, Share, and buttons for Endless and Sprint.
 - Daily share links are `?daily=<n>&beat=<m>&from=<name>`. A friend who opens one that day gets a line to beat. Endless and Sprint links use `?mode=endless|sprint`.
 - `EPOCH` in `daily.js` sets which date is Daily #1.
