@@ -854,8 +854,16 @@
       return;
     }
     if (state.rocket) return;
+    // A first finger down means no other finger is touching, so any thumb we
+    // still think is down lost its "lifted" event (iPhones sometimes drop it).
+    if (e.isPrimary) releaseAllThumbs();
     const i = sideOf(e.clientX);
-    if (state.thumbs[i]) return; // that side already has a thumb on it
+    if (state.thumbs[i]) {
+      if (state.thumbs[i].id === e.pointerId) return;
+      // A new finger on a side that we think already has one: the old one must
+      // have lifted without telling us. Let it go, then take the new touch.
+      releaseThumb(i);
+    }
     try { canvas.setPointerCapture(e.pointerId); } catch {}
     const thumb = { id: e.pointerId, mode: 'none', canAim: false, downAt: performance.now(), sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY };
     state.thumbs[i] = thumb;
@@ -914,22 +922,50 @@
   function onUp(e) {
     const i = state.thumbs.findIndex(t => t && t.id === e.pointerId);
     if (i < 0) return;
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
+    releaseThumb(i, e.type === 'pointerup');
+  }
+
+  // A thumb lifted: let go of a grip, or throw if it was aiming. (When we only
+  // find out late that a finger is gone, don't throw: just let go.)
+  function releaseThumb(i, canThrow = false) {
     const t = state.thumbs[i];
+    if (!t) return;
     state.thumbs[i] = null;
     if (state.phase === 'over') return;
     if (t.mode === 'grip') {
       letGo(i);
-    } else if (t.mode === 'aim') {
+    } else if (t.mode === 'aim' && canThrow) {
       const v = throwVelocity(t);
       if (v) throwHand(i, v);
     }
+  }
+
+  function releaseAllThumbs() {
+    if (state) state.thumbs.forEach((t, i) => t && releaseThumb(i));
   }
 
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onUp);
+  canvas.addEventListener('lostpointercapture', onUp);
+  // Safety nets for lost "lifted" events: when no fingers are left on the
+  // screen, or the game is interrupted (notification shade, call, app switch).
+  // (A moment later, so the normal "lifted" event gets first go and can still
+  // throw; and only thumbs that were down before, not a brand-new touch.)
+  const allLifted = (e) => {
+    if (e.touches && e.touches.length) return;
+    const at = performance.now();
+    setTimeout(() => {
+      if (state) state.thumbs.forEach((t, i) => t && t.downAt < at && releaseThumb(i));
+    }, 80);
+  };
+  window.addEventListener('touchend', allLifted, { passive: true });
+  window.addEventListener('touchcancel', allLifted, { passive: true });
+  window.addEventListener('blur', releaseAllThumbs);
+  window.addEventListener('pagehide', releaseAllThumbs);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAllThumbs(); });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
 
   function grab(i, hold, auto = false) {
