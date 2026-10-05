@@ -127,6 +127,17 @@ window.Progress = (() => {
     const saved = JSON.parse(localStorage.getItem(KEY));
     if (saved) p = Object.assign(blank(), saved);
   } catch {}
+  // One-time cleanup: 0 m runs are leftovers from before the history became
+  // daily-only and before a missed opening catch stopped counting (a real
+  // daily can't be 0 m: heights count from the ground and you catch above it).
+  if (!p.cleaned0) {
+    const before = p.runs.length;
+    p.runs = p.runs.filter(r => r.m > 0);
+    p.totalRuns = Math.max(0, p.totalRuns - (before - p.runs.length));
+    for (const k of Object.keys(p.daily)) if (!(p.daily[k].m > 0)) delete p.daily[k];
+    p.cleaned0 = true;
+    save();
+  }
   // Drop badges that no longer exist (the list was rebalanced).
   for (const id of Object.keys(p.badges)) if (!BADGES.some(b => b.id === id)) delete p.badges[id];
 
