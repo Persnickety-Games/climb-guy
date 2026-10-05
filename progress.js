@@ -47,9 +47,12 @@ window.Progress = (() => {
     { id: 'dedicated', icon: '🔁', name: 'Dedicated', desc: 'Play 50 dailies.' },
     { id: 'streak7', icon: '🔥', name: 'On a Roll', desc: 'Play the daily 7 days in a row.' },
     { id: 'streak30', icon: '🗓️', name: 'Habit Forming', desc: 'Play the daily 30 days in a row.' },
-    { id: 'km5', icon: '🥾', name: 'Hiker', desc: 'Climb 5 km in total.' },
-    { id: 'km25', icon: '🏔️', name: 'Mountaineer', desc: 'Climb 25 km in total.' },
-    { id: 'km50', icon: '🛰️', name: 'Orbit', desc: 'Climb 50 km in total.' },
+    { id: 'km1', icon: '👣', name: 'First Kilometer', desc: 'Climb 1 km in total in dailies.', total: 1000 },
+    { id: 'km5', icon: '🥾', name: 'Hiker', desc: 'Climb 5 km in total in dailies.', total: 5000 },
+    { id: 'km10', icon: '🧗', name: 'Trailblazer', desc: 'Climb 10 km in total in dailies.', total: 10000 },
+    { id: 'km25', icon: '🏔️', name: 'Mountaineer', desc: 'Climb 25 km in total in dailies.', total: 25000 },
+    { id: 'km50', icon: '✈️', name: 'Cruising Altitude', desc: 'Climb 50 km in total in dailies.', total: 50000 },
+    { id: 'km100', icon: '🛰️', name: 'Orbit', desc: 'Climb 100 km in total in dailies.', total: 100000 },
     { id: 'fooled', icon: '👻', name: 'Fooled', desc: 'Try to grab a ghost ledge.' },
     { id: 'birdbrain', icon: '🐦', name: 'Bird Brain', desc: 'Get knocked by birds 10 times.' },
     { id: 'splash', icon: '💦', name: 'Splash Landing', desc: 'Fall in the water below 5 m.' },
@@ -62,6 +65,9 @@ window.Progress = (() => {
     { id: 'etotal2', icon: '🗺️', name: 'Wanderer', desc: 'Climb 2.5 km in total in Endless.', mode: 'endless', endlessTotal: 2500 },
     { id: 'etotal5', icon: '🏕️', name: 'Expedition', desc: 'Climb 5 km in total in Endless.', mode: 'endless', endlessTotal: 5000 },
     { id: 'etotal10', icon: '⛰️', name: 'Summit Seeker', desc: 'Climb 10 km in total in Endless.', mode: 'endless', endlessTotal: 10000 },
+    { id: 'etotal25', icon: '🎒', name: 'Trekker', desc: 'Climb 25 km in total in Endless.', mode: 'endless', endlessTotal: 25000 },
+    { id: 'etotal50', icon: '🌄', name: 'Above the Clouds', desc: 'Climb 50 km in total in Endless.', mode: 'endless', endlessTotal: 50000 },
+    { id: 'etotal100', icon: '🌌', name: 'Edge of Space', desc: 'Climb 100 km in total in Endless.', mode: 'endless', endlessTotal: 100000 },
     // Sprint
     { id: 'speed', icon: '⚡', name: 'Speedrun', desc: 'Reach 150 m in a Sprint.', mode: 'sprint' },
     { id: 'blur', icon: '💨', name: 'Blur', desc: 'Reach 250 m in a Sprint.', mode: 'sprint' },
@@ -276,9 +282,7 @@ window.Progress = (() => {
     for (const b of BADGES) if (b.best != null && p.best >= b.best) award(b.id);
     if (Object.keys(p.days).length >= 5) award('regular');
     if (p.totalRuns >= 50) award('dedicated');
-    if (p.totalM >= 5000) award('km5');
-    if (p.totalM >= 25000) award('km25');
-    if (p.totalM >= 50000) award('km50');
+    for (const b of BADGES) if (b.total && p.totalM >= b.total) award(b.id);
     if (splash) award('splash');
     if (daily) {
       p.daily[daily.key] = { m, n: daily.n };
