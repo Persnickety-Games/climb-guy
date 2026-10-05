@@ -58,6 +58,10 @@ window.Progress = (() => {
     { id: 'warmup', icon: '🌊', name: 'Warm-Up', desc: 'Play 10 Endless runs.', mode: 'endless' },
     { id: 'deepend', icon: '🤿', name: 'Deep End', desc: 'Reach 500 m in Endless.', mode: 'endless' },
     { id: 'longhaul', icon: '🌙', name: 'Long Haul', desc: 'Reach 1,000 m in Endless.', mode: 'endless' },
+    { id: 'etotal1', icon: '🧭', name: 'Explorer', desc: 'Climb 1 km in total in Endless.', mode: 'endless', endlessTotal: 1000 },
+    { id: 'etotal2', icon: '🗺️', name: 'Wanderer', desc: 'Climb 2.5 km in total in Endless.', mode: 'endless', endlessTotal: 2500 },
+    { id: 'etotal5', icon: '🏕️', name: 'Expedition', desc: 'Climb 5 km in total in Endless.', mode: 'endless', endlessTotal: 5000 },
+    { id: 'etotal10', icon: '⛰️', name: 'Summit Seeker', desc: 'Climb 10 km in total in Endless.', mode: 'endless', endlessTotal: 10000 },
     // Sprint
     { id: 'speed', icon: '⚡', name: 'Speedrun', desc: 'Reach 150 m in a Sprint.', mode: 'sprint' },
     { id: 'blur', icon: '💨', name: 'Blur', desc: 'Reach 250 m in a Sprint.', mode: 'sprint' },
@@ -117,6 +121,7 @@ window.Progress = (() => {
       daily: {},              // 'YYYY-MM-DD' (Eastern) -> { m, n }: your one run of that day's daily
       endlessBest: 0,         // Endless and Sprint keep their own bests and counts;
       endlessRuns: 0,         // only the daily feeds the main stats
+      endlessTotal: 0,        // meters climbed in Endless, all runs added up
       sprintBest: 0,          // Sprint mode (60 s) has its own best and doesn't count as a run
       sprintRuns: 0,
     };
@@ -326,7 +331,9 @@ window.Progress = (() => {
     const isBest = m > p.endlessBest;
     p.endlessBest = Math.max(p.endlessBest, m);
     p.endlessRuns++;
+    p.endlessTotal = (p.endlessTotal || 0) + m;
     if (p.endlessRuns >= 10) award('warmup');
+    for (const b of BADGES) if (b.endlessTotal && p.endlessTotal >= b.endlessTotal) award(b.id);
     if (m >= 500) award('deepend');
     if (m >= 1000) award('longhaul');
     return finishSide(isBest, before, badgesBefore);
@@ -381,6 +388,7 @@ window.Progress = (() => {
     get sprintBest() { return p.sprintBest; },
     get endlessBest() { return p.endlessBest; },
     get endlessRuns() { return p.endlessRuns; },
+    get endlessTotal() { return p.endlessTotal || 0; },
     MODE_NAME,
     get sprintRuns() { return p.sprintRuns; },
     get badges() { return p.badges; },

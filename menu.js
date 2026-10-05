@@ -240,6 +240,7 @@ window.Menu = (() => {
       const modeBadges = Progress.BADGES.filter(b => b.mode === m.id);
       const extras = [];
       if (m.best && m.best() > 0) extras.push(`Best ${fmtNum(m.best())} m`);
+      if (m.id === 'endless' && Progress.endlessTotal > 0) extras.push(`${Progress.endlessTotal >= 1000 ? `${(Progress.endlessTotal / 1000).toFixed(1)} km` : `${fmtNum(Progress.endlessTotal)} m`} in total`);
       if (modeBadges.length) extras.push(`${modeBadges.filter(b => Progress.badges[b.id]).length}/${modeBadges.length} badges`);
       if (extras.length) text.append(el('div', 'mode-best', extras.join(' · ')));
       const today = m.id === 'daily' ? Daily.today() : null;
