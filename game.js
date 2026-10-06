@@ -585,19 +585,19 @@
   let skillsDone = false;       // after the skills part, a splash restarts at the climb
 
   const COACH = [
-    { text: 'Drag a thumb DOWN, then let go.', sub: 'That hand flies up, like a slingshot. Left side of the screen = left hand.',
+    { text: 'Drag a thumb DOWN, then let go', sub: 'That hand flies up. Left side = left hand.',
       done: t => t.thrown },
-    { text: 'Tap while a hand touches a ledge to grab it.', sub: 'Keep your thumb down to hang on. Lift it to let go.',
+    { text: 'Tap when a hand touches a ledge', sub: 'Keep your thumb down to hang on.',
       done: t => t.settled },
-    { text: 'Now throw your other hand higher, and grab.', sub: 'Keep your other thumb pressed down the whole time, or that hand lets go!',
+    { text: 'Throw your other hand up and grab', sub: 'Keep the first thumb pressed down!',
       done: t => t.both >= 0.3 },
-    { text: 'Let go of your LOWER hand to swing up.', sub: 'Then grab a new ledge with it.',
+    { text: 'Let go of your LOWER hand', sub: "You'll swing up. Then grab again.",
       start: t => { t.swingsAt = t.swings; },
       done: t => t.swings > t.swingsAt && t.both >= 0.3 },
-    { text: 'Nice! Keep going: grab high, let go low.', sub: t => `Swing up ${SWINGS} more times (${Math.min(SWINGS, t.swings - t.swingsAt)}/${SWINGS}).`,
+    { text: 'Keep going: grab high, let go low', sub: t => `Swing up ${SWINGS} more times (${Math.min(SWINGS, t.swings - t.swingsAt)}/${SWINGS})`,
       start: t => { t.swingsAt = t.swings; },
       done: t => t.swings - t.swingsAt >= SWINGS && t.both >= 0.3 },
-    { text: t => `Climb to the finish! ${Math.max(0, FINISH_M - heightMeters())} m to go`, sub: "The water is rising behind you. It's slower here than in the real climb.",
+    { text: t => `Climb to the finish: ${Math.max(0, FINISH_M - heightMeters())} m to go`, sub: 'The water is rising (slower than usual).',
       start: startClimb },
   ];
   const CLIMB_STEP = COACH.length - 1;
@@ -655,12 +655,12 @@
       b.called = true;
       const p = POWERS[b.kind];
       t.callouts.push(p.good
-        ? { text: `${p.icon} Green balloon! Touch it with a hand.`, sub: `Green ones help. ${p.name}: ${p.text}.` }
-        : { text: `${p.icon} Red balloon! Steer clear.`, sub: `Red ones are trouble. ${p.name}: ${p.text}.` });
+        ? { text: `${p.icon} Green balloon: touch it!`, sub: `${p.name}: ${p.text}` }
+        : { text: `${p.icon} Red balloon: avoid it!`, sub: `${p.name}: ${p.text}` });
     }
     if (!t.calledMover && state.holds.some(o => o.move && o.y < top && o.y > state.cam)) {
       t.calledMover = true;
-      t.callouts.push({ text: '↔️ Moving ledge!', sub: 'Watch it slide, then time your grab.' });
+      t.callouts.push({ text: '↔️ Moving ledge!', sub: 'Watch it, then time your grab.' });
     }
     const free = state.time - t.stepAt > CARD_MIN_SECS + 1 && (!t.callout || state.time - t.callout.at > CALLOUT_SECS);
     if (free && t.callouts.length) t.callout = { ...t.callouts.shift(), at: state.time };
@@ -755,48 +755,45 @@
     return lines;
   }
 
-  // The coach box: the current step, with a dot for each step.
+  // The coach box: one line saying what to do and a smaller line under it,
+  // tucked under the height. A callout (balloon, moving ledge) takes it over
+  // for a few seconds.
+  const COACH_H = 50;
   function drawCoach(y) {
     const t = state.training;
     if (!t || state.phase === 'over') return;
-    // A callout (balloon, moving ledge) takes over the box for a few seconds.
     const call = t.callout && state.time - t.callout.at < CALLOUT_SECS ? t.callout : null;
     const c = call || COACH[t.step];
     const val = (x) => (typeof x === 'function' ? x(t) : x);
     const age = state.time - (call ? call.at : t.stepAt);
-    const cx = ox + (WORLD_W * scale) / 2;
-    const w = Math.min(cssW - 24, WORLD_W * scale - 16, 380), pad = 14;
-    ctx.font = 'bold 16px system-ui, sans-serif';
-    const main = wrapText(val(c.text), w - pad * 2);
-    ctx.font = '13px system-ui, sans-serif';
-    const sub = wrapText(val(c.sub), w - pad * 2);
-    const dots = !call && !t.climbing; // one dot per skill
-    const h = pad + main.length * 21 + sub.length * 17 + (dots ? 22 : 6);
+    const w = Math.min(cssW - 16, WORLD_W * scale - 12, 420), x0 = ox + (WORLD_W * scale - w) / 2, pad = 12;
     ctx.globalAlpha = clamp(age * 4, 0, 1);
-    const pop = 1 + Math.max(0, 0.2 - age) * 0.4;
-    ctx.save();
-    ctx.translate(cx, y + h / 2); ctx.scale(pop, pop); ctx.translate(-cx, -(y + h / 2));
-    ctx.fillStyle = 'rgba(10, 25, 40, 0.72)';
-    roundRect(cx - w / 2, y, w, h, 14);
+    ctx.fillStyle = 'rgba(10, 25, 40, 0.68)';
+    roundRect(x0, y, w, COACH_H, 12);
     ctx.fill();
-    ctx.strokeStyle = `rgba(255, 209, 102, ${age < 1.5 ? 0.9 : 0.35})`;
+    ctx.strokeStyle = `rgba(255, 209, 102, ${age < 1.5 ? 0.9 : 0.3})`;
     ctx.lineWidth = 2;
     ctx.stroke();
-    ctx.textAlign = 'center';
-    let ly = y + pad + 13;
-    ctx.fillStyle = call ? '#7df9ff' : '#ffd166';
-    ctx.font = 'bold 16px system-ui, sans-serif';
-    for (const l of main) { ctx.fillText(l, cx, ly); ly += 21; }
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.font = '13px system-ui, sans-serif';
-    for (const l of sub) { ctx.fillText(l, cx, ly - 2); ly += 17; }
-    const n = dots ? CLIMB_STEP : 0, gap = 12, dx = cx - ((n - 1) * gap) / 2;
-    for (let k = 0; k < n; k++) {
-      ctx.fillStyle = k < t.step ? '#7dffb0' : k === t.step ? '#ffd166' : 'rgba(255,255,255,0.25)';
-      ctx.beginPath(); ctx.arc(dx + k * gap, y + h - 11, 3.5, 0, Math.PI * 2); ctx.fill();
+    // Skill number on the right, while learning the moves.
+    let right = x0 + w - pad;
+    if (!call && !t.climbing) {
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${t.step + 1}/${CLIMB_STEP}`, right, y + 20);
+      right -= 30;
     }
-    ctx.restore();
     ctx.textAlign = 'left';
+    const fit = (text, weight, size, maxW) => {
+      let px = size;
+      do { ctx.font = `${weight} ${px}px system-ui, sans-serif`; } while (ctx.measureText(text).width > maxW && (px -= 0.5) > 9);
+    };
+    ctx.fillStyle = call ? '#7df9ff' : '#ffd166';
+    fit(val(c.text), 'bold', 16, right - x0 - pad);
+    ctx.fillText(val(c.text), x0 + pad, y + 21);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    fit(val(c.sub), '', 13, x0 + w - pad * 2 - x0);
+    ctx.fillText(val(c.sub), x0 + pad, y + 40);
     ctx.globalAlpha = 1;
   }
 
@@ -813,9 +810,7 @@
       fitText('You know the moves. More surprises wait higher up.', cx, y0 + 44, maxW, 15);
       ctx.fillStyle = '#7dffb0';
       fitText("Today's daily is the same climb for everyone.", cx, y0 + 72, maxW, 15);
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText(state.time - state.overAt > 0.6 ? 'Tap to go to the daily' : '', cx, y0 + 130);
+
     } else {
       ctx.fillText('Splash!', cx, y0);
       ctx.font = '20px system-ui, sans-serif';
@@ -823,10 +818,8 @@
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
       fitText('The water got you. Practice makes perfect!', cx, y0 + 72, maxW, 15);
       ctx.fillStyle = '#7dffb0';
-      fitText("Training doesn't count toward your stats.", cx, y0 + 98, maxW, 14);
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText('Tap to try the climb again', cx, y0 + 150);
+      fitText("Training doesn't count toward your stats.", cx, y0 + 96, maxW, 14);
+
     }
     ctx.textAlign = 'left';
   }
@@ -1135,7 +1128,7 @@
     if (state.phase === 'over') {
       // The daily is one run a day: afterwards, back to the start screen.
       if (state.time - state.overAt > 0.6) {
-        if (learn() && state.trainingDone) finishTraining();
+        if (learn()) { if (!state.trainingDone) newGame(); } // or the buttons
         else if (daily() && !state.missed) showStart();
         else newGame();
       }
@@ -2212,9 +2205,9 @@
       ctx.fillText(learn() ? '🎓 TRAINING' : `📅 DAILY #${day.n}`, ox + (WORLD_W * scale) / 2, top + 10);
       ctx.textAlign = 'left';
     }
-    if (learn()) drawCoach(top + 62);
-    drawEffects(top + 60);
-    drawToast();
+    if (learn()) drawCoach(top + 38);
+    drawEffects(learn() ? top + 38 + COACH_H + 6 : top + 60);
+    if (!learn()) drawToast(); // in training, the callouts say what balloons do
 
     ctx.textAlign = 'center';
     const cx = ox + (WORLD_W * scale) / 2;
@@ -2448,7 +2441,17 @@
     shareStatus.textContent = '';
   });
 
+  const learnActions = document.getElementById('learn-actions');
+  document.getElementById('learn-retry').addEventListener('click', () => newGame());
+  document.getElementById('learn-skip').addEventListener('click', () => finishTraining());
   function syncOverlay() {
+    const showLearn = started && learn() && state.phase === 'over' && state.time - state.overAt > 0.6 && !Menu.isOpen();
+    if (learnActions.hidden === showLearn) {
+      learnActions.hidden = !showLearn;
+      document.getElementById('learn-retry').hidden = !!state.trainingDone;
+      document.getElementById('learn-skip').textContent = state.trainingDone ? "Play today's daily ›" : 'Skip to the daily ›';
+      document.getElementById('learn-skip').className = state.trainingDone ? '' : 'learn-secondary';
+    }
     const show = started && state.phase === 'over' && !state.missed && !learn() && tunePanel.hidden && !Menu.isOpen();
     if (overActions.hidden === show) { // only touch the DOM when it changes
       overActions.hidden = !show;
@@ -2564,6 +2567,7 @@
         : modeBest() > 0 ? `Your best: ${modeBest()} m` : '';
     }
     if (!result && doneTimer) { clearInterval(doneTimer); doneTimer = null; }
+    $('start-skip').hidden = !learn();
   }
 
   function showStart() {
@@ -2574,7 +2578,7 @@
   }
 
   function begin(e) {
-    if (started || startEl.classList.contains('done')) return;
+    if (started || startEl.classList.contains('done') || e.target.closest('button')) return;
     e.preventDefault();
     // Left the start screen open past midnight Eastern? Build the new day's level.
     if (daily() && Daily.today().key !== day.key) newGame();
@@ -2597,6 +2601,7 @@
     newGame();
     dismissStart();
   }
+  $('start-skip').addEventListener('click', () => { Analytics.event('learn-skipped'); finishTraining(); });
   for (const b of startEl.querySelectorAll('[data-mode]')) b.addEventListener('click', () => playMode(b.dataset.mode));
   $('done-share').addEventListener('click', () => {
     const today = Daily.today();

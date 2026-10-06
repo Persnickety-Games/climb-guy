@@ -5,7 +5,8 @@ Ideas captured for later. Nothing here is built yet unless marked done.
 ## Training (in progress, unlisted at /learn)
 
 Testers find the start hard, then fun once it clicks. Training is a guided first climb (see README). Next steps once it's been tried:
-- Show it to brand-new players instead of (or before) the How-to-play cards, and add it to the ☰ menu.
+- Show it to brand-new players instead of (or before) the How-to-play cards.
+- When it goes live: add it at the bottom of the ☰ Modes list as "Tutorial" (learn the basics), so anyone who skipped it can come back to it.
 
 ## Daily game (Wordle-style)
 
