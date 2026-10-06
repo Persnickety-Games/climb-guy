@@ -572,7 +572,7 @@
   const COACH = [
     { text: 'Drag a thumb DOWN, then let go.', sub: 'That hand flies up, like a slingshot. Left side of the screen = left hand.', done: t => t.thrown },
     { text: 'Tap while a hand touches a ledge to grab it.', sub: 'Keep your thumb down to hang on. Lift it to let go.', done: t => t.settled },
-    { text: 'Now throw your other hand higher, and grab.', sub: 'You climb by swapping hands.', start: () => { const t = state.training; t.swapFrom = t.held[0] > 0 || t.held[1] > 0 ? t.held.findIndex(x => x > 0) : t.lastHand; t.handHeld = [false, false]; },
+    { text: 'Now throw your other hand higher, and grab.', sub: 'Keep your other thumb pressed down the whole time, or that hand lets go!', start: () => { const t = state.training; t.swapFrom = t.held[0] > 0 || t.held[1] > 0 ? t.held.findIndex(x => x > 0) : t.lastHand; t.handHeld = [false, false]; },
       done: t => (t.swapFrom >= 0 ? t.handHeld[1 - t.swapFrom] : t.handHeld[0] || t.handHeld[1]) },
     { text: 'Let go of your LOWER hand to swing up.', sub: "Climb to 10 m. Fall? The floor catches you here.", done: t => t.settled && hangingM() >= WATER_AT_M },
     { start: startTrainingWater, text: 'The water is rising! Stay above it.', sub: "It's slow here. In the real climb it's faster, and there's no floor.", done: t => t.settled && hangingM() >= 16 },
