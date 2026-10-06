@@ -40,6 +40,7 @@ window.Menu = (() => {
     body.replaceChildren();
     body.scrollTop = 0;
     ({ stats: renderStats, passport: renderPassport, badges: renderBadges, customize: renderCustomize, modes: renderModes })[tab]();
+    body.append(credit());
   }
 
   tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
@@ -253,7 +254,10 @@ window.Menu = (() => {
       list.append(card);
     }
     body.append(list);
-    // A small "curated by PixelPicked" badge, tucked at the very bottom.
+  }
+
+  // A small "curated by PixelPicked" badge, tucked at the very bottom of every tab.
+  function credit() {
     const credit = el('div', 'menu-credit');
     const a = el('a');
     a.href = 'https://pixelpicked.com/game/4CCudGAQNbT/climb-guy/';
@@ -263,7 +267,7 @@ window.Menu = (() => {
     Object.assign(img, { src: 'https://api.pixelpicked.com/api/badges/4CCudGAQNbT/live.png?theme=light', alt: 'Approved on PixelPicked', width: 200, height: 43, loading: 'lazy' });
     a.append(img);
     credit.append(a);
-    body.append(credit);
+    return credit;
   }
 
   // ---------- Customize ----------
