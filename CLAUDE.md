@@ -26,4 +26,4 @@ People don't like reading. Menu cards, buttons, prompts and callouts say only wh
 
 ## Testing
 
-No build step. The headless Playwright scripts that have been used for testing live outside the repo. Before pushing, check that the page loads with no console errors in Daily, `?mode=endless` and `?mode=sprint`.
+No build step. The headless Playwright scripts that have been used for testing live outside the repo. Before pushing, check that the page loads with no console errors in Daily, `?mode=endless`, `?mode=sprint` and `?mode=learn`. A fresh browser with no saved data starts in training; set `localStorage['cg.tutorial'] = 'seen'` to test the daily as a returning player.

@@ -127,7 +127,9 @@
   const SPRINT_SECS = 60;
   // Training (?mode=learn, or climbguy.xyz/learn) is a guided first climb; see "Training" below.
   const URL_MODE = new URLSearchParams(location.search).get('mode');
-  let mode = ['sprint', 'endless', 'learn'].includes(URL_MODE) ? URL_MODE : 'daily';
+  // Brand-new players (no runs yet, haven't finished or skipped training) start
+  // in training, unless a link asks for Endless or Sprint.
+  let mode = ['sprint', 'endless', 'learn'].includes(URL_MODE) ? URL_MODE : Tutorial.shouldShow ? 'learn' : 'daily';
   const sprint = () => mode === 'sprint';
   const daily = () => mode === 'daily';
   const learn = () => mode === 'learn';
@@ -737,11 +739,21 @@
 
   // Done: on to today's daily (or its result, if it's already been played).
   function finishTraining() {
-    history.replaceState(null, '', location.pathname);
+    Tutorial.markSeen();
+    leaveTrainingUrl();
     mode = 'daily';
     skin = Progress.equipped();
     newGame();
     showStart();
+  }
+
+  // Drop ?mode=learn from the address, so a reload doesn't land back in training.
+  function leaveTrainingUrl() {
+    const q = new URLSearchParams(location.search);
+    if (q.get('mode') !== 'learn') return;
+    q.delete('mode');
+    q.delete('v');
+    history.replaceState(null, '', location.pathname + (q.toString() ? `?${q}` : ''));
   }
 
   function wrapText(text, maxW) {
@@ -2597,6 +2609,8 @@
     // Leaving a daily mid-climb ends it: the daily is one run a day.
     if (daily() && state.phase === 'playing') gameOver();
     mode = m;
+    if (m === 'learn') skillsDone = false; // from the menu: the whole tutorial
+    else leaveTrainingUrl();
     skin = Progress.equipped();
     newGame();
     dismissStart();
@@ -2633,6 +2647,6 @@
   newGame();
   renderStart();
   startEl.focus();
-  if (Tutorial.shouldShow && !learn()) Tutorial.open(true); // a brand-new player's first visit
+  if (learn()) Analytics.event('learn-started');
   requestAnimationFrame(frame);
 })();

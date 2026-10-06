@@ -228,6 +228,7 @@ window.Menu = (() => {
     { id: 'daily', icon: '📅', name: 'Daily', desc: 'One run a day, the same level for everyone. A new one every midnight Eastern.' },
     { id: 'endless', icon: '🌊', name: 'Endless', desc: 'Practice: climb until the water gets you, as often as you like. Has its own best and badges.', best: () => Progress.endlessBest },
     { id: 'sprint', icon: '⏱️', name: 'Sprint', desc: '60 seconds. No rising water, no balloons. How high can you get? Has its own best and badges.', best: () => Progress.sprintBest },
+    { id: 'learn', icon: '🎓', name: 'Tutorial', desc: 'Learn the basics.' },
   ];
 
   function renderModes() {
