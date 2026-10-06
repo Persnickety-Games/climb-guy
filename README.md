@@ -40,10 +40,12 @@ Developer tuning: add `?tune` to an Endless or Sprint link (e.g. `?mode=endless&
 
 `tutorial.js`: five illustrated cards with small looping animations (sides, throw, grab and hold, fling, water and the daily). They open automatically on a brand-new player's first visit (Skip or swipe through), and any time from "❓ How to play" at the bottom of the ☰ menu. The game pauses while they're open.
 
+**Training** (unlisted for now: `climbguy.xyz/learn`, which goes to `?mode=learn`): a guided first climb. You start standing on a floor that catches you, with no water, and a coach box at the top teaches one step at a time: throw, grab, swap hands, swing up to 10 m. Then the water starts (at 60% speed), and a green balloon, moving ledges and a red balloon come much sooner than usual. A golden ledge at 60 m is the finish, and it leads to today's daily. Ghosts, ice, wind and birds stay surprises. Training has its own fixed seed (it never touches the daily), counts toward nothing, and finishing it marks the How-to-play cards as seen. Events: `learn-finished`, `learn-splash`.
+
 ## Feedback and analytics
 
 - **Feedback** (`feedback.js`): a free-text box (☰ menu footer, and the daily's done screen) that posts to a Google Form, with mode, bests, screen size and browser attached. Set `FORM` to the form id and entry ids. The button stays hidden until then.
-- **Analytics** (`analytics.js`): GoatCounter, free, no cookies, visitors by country and region. Events: `visitor-new` and `visitor-returning` (worked out on the device, once a day). Open `climbguy.xyz/#toggle-goatcounter` to stop or restart counting your own browser; the game handles it with a small note instead of GoatCounter's pop-up, `daily-played`, `endless-run`, `sprint-run`, `share-<mode>`, `feedback-sent`. Set `CODE` to the GoatCounter site code. It only runs on https://climbguy.xyz.
+- **Analytics** (`analytics.js`): GoatCounter, free, no cookies, visitors by country and region. Events: `visitor-new` and `visitor-returning` (worked out on the device, once a day). Open `climbguy.xyz/#toggle-goatcounter` to stop or restart counting your own browser; the game handles it with a small note instead of GoatCounter's pop-up, `daily-played`, `endless-run`, `sprint-run`, `share-<mode>`, `feedback-sent`, `learn-finished`, `learn-splash`. Set `CODE` to the GoatCounter site code. It only runs on https://climbguy.xyz.
 
 ## Run locally
 

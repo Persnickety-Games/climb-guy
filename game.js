@@ -125,12 +125,14 @@
   // daily.js). Endless and Sprint (60 s, no rising water or balloons, its own
   // best) are in the ☰ Modes tab, or opened by a ?mode=endless / ?mode=sprint link.
   const SPRINT_SECS = 60;
+  // Training (?mode=learn, or climbguy.xyz/learn) is a guided first climb; see "Training" below.
   const URL_MODE = new URLSearchParams(location.search).get('mode');
-  let mode = URL_MODE === 'sprint' || URL_MODE === 'endless' ? URL_MODE : 'daily';
+  let mode = ['sprint', 'endless', 'learn'].includes(URL_MODE) ? URL_MODE : 'daily';
   const sprint = () => mode === 'sprint';
   const daily = () => mode === 'daily';
-  const modeBest = () => (sprint() ? Progress.sprintBest : daily() ? Progress.best : Progress.endlessBest);
-  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ' };
+  const learn = () => mode === 'learn';
+  const modeBest = () => (learn() ? 0 : sprint() ? Progress.sprintBest : daily() ? Progress.best : Progress.endlessBest);
+  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ', learn: '' };
   // The main badges, stats and landmarks come only from the daily.
   const mainAward = (id) => (daily() ? Progress.award(id) : null);
   let day = Daily.today();         // the daily being played; refreshed at each new game
@@ -140,7 +142,7 @@
   const DROP_TOP = START_Y + 640;  // where the daily's opening drop starts: the same on every screen (just above the top on short ones)
   // Is the level being built for real yet? In the daily it's fixed from the
   // start; otherwise features start once you catch on.
-  const levelLive = () => state.phase === 'playing' || daily();
+  const levelLive = () => state.phase === 'playing' || daily() || learn();
 
   // The ⚙ tuning sliders are a hidden developer tool: only with ?tune in the
   // URL, never in the daily, and runs played with it don't count for anything.
@@ -158,21 +160,22 @@
 
   function newGame() {
     if (daily()) day = Daily.today();
-    R = Daily.streams(daily() ? day.key : null);
+    R = Daily.streams(daily() ? day.key : learn() ? 'learn' : null);
     DAY = daily() ? {
       rowGap: R.day.r(0.92, 1.08), ledgeW: R.day.r(0.9, 1.1), pairs: R.day.r(0.85, 1.15),
       balloonGap: R.day.r(0.85, 1.15), featureGap: R.day.r(0.85, 1.15), water: R.day.r(0.94, 1.06),
     } : NO_DAY;
     applyTuning();
     CHALLENGE = challengeFor(mode);
-    const startHold = { x: 200, y: START_Y, w: 240, h: 20, ci: 0 };
-    const cam = START_Y - 120;
+    const startHold = learn() ? { x: WORLD_W / 2, y: START_Y, w: WORLD_W, h: 24, floor: true, color: '#7a6a58' }
+      : { x: 200, y: START_Y, w: 240, h: 20, ci: 0 };
+    const cam = learn() ? START_Y - 40 : START_Y - 120;
     state = {
       phase: 'ready',          // ready (opening drop) | playing | over
       overAt: 0,
       time: 0,
       // The climber drops in from the top of the screen; tap to catch a ledge.
-      body: { x: 200, y: daily() ? DROP_TOP : cam + viewH - 40, vx: 0, vy: 0 },
+      body: { x: 200, y: daily() ? DROP_TOP : learn() ? floorTop(startHold) : cam + viewH - 40, vx: 0, vy: 0 },
       hands: [
         { state: 'idle', x: 0, y: 0, vx: 0, vy: 0, t: 0, launchY: 0 },
         { state: 'idle', x: 0, y: 0, vx: 0, vy: 0, t: 0, launchY: 0 },
@@ -183,9 +186,9 @@
       effects: {},             // power name -> game time it wears off
       toast: null,             // { kind, at } — the last power popped
       rocket: null,            // { toY } while blasting off
-      dropping: true,          // slow fall until a hand catches something
+      dropping: !learn(),      // slow fall until a hand catches something
       holdsTop: START_Y,
-      water: -120,
+      water: learn() ? -1e6 : -120, // in training, out of sight until it's introduced
       cam,
       baseY: START_Y,          // height 0 m; set to wherever you first catch on
       maxY: START_Y,
@@ -211,7 +214,8 @@
       flinging: false,
       screamed: false,
     };
-    if (daily()) initFeatures(); // fixed from the ground up, so it's the same for everyone
+    if (daily() || learn()) initFeatures(); // fixed from the ground up, so it's the same for everyone
+    if (learn()) startTraining(startHold);
     placeIdle(LEFT);
     placeIdle(RIGHT);
     generateHolds();
@@ -240,7 +244,7 @@
     state.phase = 'playing';
     // Heights count from where you catch on; in the daily, from the ground,
     // so everyone's heights compare directly.
-    if (!daily()) {
+    if (!daily() && !learn()) {
       state.baseY = state.body.y;
       initFeatures();
     }
@@ -264,6 +268,7 @@
     state.nextCheckpointM = CHECKPOINT_EVERY_M;
     state.nextMilestoneM = CHECKPOINT_EVERY_M;
     state.landmarkIdx = 0;
+    if (learn()) trainingFeatures();
   }
 
   function letGo(i) {
@@ -283,7 +288,7 @@
   function generateHolds() {
     while (state.holdsTop < state.cam + viewH + T.armReach + 200) {
       // Difficulty 0..1, ramping gently over the first 500 m climbed.
-      const d = clamp((state.holdsTop - state.baseY) / (FULL_DIFFICULTY_M * UNITS_PER_METER), 0, 1);
+      const d = clamp((state.holdsTop - state.baseY) / (FULL_DIFFICULTY_M * UNITS_PER_METER), 0, 1) * (learn() ? 0.3 : 1);
       const y = state.holdsTop + lerp(85, 155, d) * R.rows.r(0.75, 1.25) * DAY.rowGap;
       spawnRow(y, d);
       state.holdsTop = y;
@@ -363,7 +368,7 @@
     const m = (y - state.baseY) / UNITS_PER_METER;
     if (m < state.nextMoverM) return;
     makeMover(row[R.features.i(row.length)]);
-    state.nextMoverM = m + moverGapM(m);
+    state.nextMoverM = m + (learn() ? R.features.r(5, 9) : moverGapM(m));
   }
 
   // Slide back and forth along the long side, each with its own distance and pace.
@@ -447,6 +452,7 @@
     const m = (y - state.baseY) / UNITS_PER_METER;
     if (m < state.nextCheckpointM) return null;
     const cp = { x: WORLD_W / 2, y, w: 230, h: 24, color: '#c9a227', checkpoint: state.nextCheckpointM };
+    if (learn()) cp.finish = true;
     state.nextCheckpointM += CHECKPOINT_EVERY_M;
     return cp;
   }
@@ -546,6 +552,196 @@
       }
     }
     state.birds = state.birds.filter(b => b.x > -60 && b.x < WORLD_W + 60);
+  }
+
+  // ---------- Training ----------
+  // A guided first climb (?mode=learn, or climbguy.xyz/learn) for players who
+  // find the start hard. You start standing on a floor that catches you, with
+  // no water. A coach box at the top teaches one thing at a time. At 10 m the
+  // water starts, slower than usual. Then come a green balloon, moving ledges
+  // and a red balloon, much sooner than in the real climb. A golden ledge at
+  // 60 m is the finish. Ghosts, ice, wind and birds are left as surprises for
+  // later. Nothing here counts toward stats or badges. It has its own fixed
+  // seed, so it never touches the daily.
+  const TRAINING_WATER = 0.6;   // water speed compared to normal
+  const WATER_AT_M = 10;
+  const FINISH_M = 60;
+  const TRAINING_MOVERS_M = 26;
+  const TRAINING_BALLOONS = [[20, 'freeze'], [33, 'swollen'], [43, 'flood']];
+
+  const COACH = [
+    { text: 'Drag a thumb DOWN, then let go.', sub: 'That hand flies up, like a slingshot. Left side of the screen = left hand.', done: t => t.thrown },
+    { text: 'Tap while a hand touches a ledge to grab it.', sub: 'Keep your thumb down to hang on. Lift it to let go.', done: t => t.grabbed },
+    { text: 'Now throw your other hand higher, and grab.', sub: 'You climb by swapping hands.', done: () => climbedM() >= 4 },
+    { text: 'Let go of your LOWER hand to swing up.', sub: "Climb to 10 m. Fall? The floor catches you here.", done: () => climbedM() >= WATER_AT_M },
+    { start: startTrainingWater, text: 'The water is rising! Stay above it.', sub: "It's slow here. In the real climb it's faster, and there's no floor.", done: () => climbedM() >= 16 },
+    { text: 'Touch the green balloon with a hand.', sub: 'Green balloons help. This one freezes the water.', done: t => t.popped.freeze || climbedM() >= 24 },
+    { text: 'Some ledges slide around.', sub: 'Watch one, then time your grab.', done: () => climbedM() >= 39 },
+    { text: 'Red balloons are trouble. Steer clear!', sub: 'This one makes the water rise faster.', done: () => climbedM() >= 49 },
+    { text: `Grab the golden ledge at ${FINISH_M} m to finish!`, sub: 'Almost there.', done: t => t.finished },
+  ];
+
+  const floorTop = (f) => f.y + f.h / 2 + BODY_R;
+
+  function startTraining(floor) {
+    state.training = { step: 0, stepAt: 0, floor, thrown: false, grabbed: false, water: false, popped: {}, finished: false, balloons: TRAINING_BALLOONS.slice() };
+  }
+
+  // Where things start in training (called from initFeatures).
+  function trainingFeatures() {
+    state.nextBalloonM = Infinity; // placed by hand instead (spawnTrainingBalloons)
+    state.nextMoverM = TRAINING_MOVERS_M;
+    state.nextGhostM = state.nextIcyM = state.windFromM = state.birdFromM = Infinity;
+    state.wind.nextM = state.nextBirdM = Infinity;
+    state.nextCheckpointM = FINISH_M;
+    state.nextMilestoneM = Infinity;
+    state.landmarkIdx = LANDMARKS.length;
+  }
+
+  function stepTraining() {
+    const t = state.training;
+    while (t.step < COACH.length - 1 && COACH[t.step].done(t)) {
+      t.step++;
+      t.stepAt = state.time;
+      if (COACH[t.step].start) COACH[t.step].start();
+      sfx.milestone();
+    }
+  }
+
+  // Standing on the floor: it holds the body up until the water arrives.
+  function standOnFloor(dt) {
+    const t = state.training, body = state.body;
+    if (!t.floor || body.y >= floorTop(t.floor)) return;
+    if (body.vy < -500 && state.phase === 'playing' && !t.landedTip) {
+      t.landedTip = true;
+      celebrate('Phew! The floor catches you, just in training.', '', true);
+    }
+    body.y = floorTop(t.floor);
+    if (body.vy < 0) body.vy = 0;
+    body.vx *= Math.exp(-8 * dt);
+  }
+
+  function startTrainingWater() {
+    const t = state.training;
+    state.water = Math.max(t.floor.y + t.floor.h / 2, state.cam - 30);
+    t.floor = null;
+    t.water = true;
+    celebrate('🌊 Uh oh, water!', 'Keep climbing!');
+  }
+
+  function spawnTrainingBalloons() {
+    const t = state.training;
+    while (t.water && t.balloons.length && state.baseY + t.balloons[0][0] * UNITS_PER_METER < state.cam + viewH + 600) {
+      const [m, kind] = t.balloons.shift();
+      state.balloons.push({ kind, x: R.balloons.r(110, WORLD_W - 110), y: state.baseY + m * UNITS_PER_METER, phase: rand(0, 6.3), popped: 0 });
+    }
+  }
+
+  function trainingGrab(hold) {
+    const t = state.training;
+    if (!hold.floor) t.grabbed = true;
+    if (!hold.finish || t.finished) return;
+    t.finished = true;
+    state.trainingDone = true;
+    state.phase = 'over';
+    state.overAt = state.time;
+    releaseAllThumbs();
+    burstConfetti(cssW / 2, cssH * 0.3, 90);
+    sfx.fanfare();
+    Tutorial.markSeen();
+    Analytics.event('learn-finished');
+  }
+
+  // Done: on to today's daily (or its result, if it's already been played).
+  function finishTraining() {
+    history.replaceState(null, '', location.pathname);
+    mode = 'daily';
+    skin = Progress.equipped();
+    newGame();
+    showStart();
+  }
+
+  function wrapText(text, maxW) {
+    const lines = [];
+    let line = '';
+    for (const w of text.split(' ')) {
+      const next = line ? `${line} ${w}` : w;
+      if (line && ctx.measureText(next).width > maxW) { lines.push(line); line = w; } else line = next;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  // The coach box: the current step, with a dot for each step.
+  function drawCoach(y) {
+    const t = state.training;
+    if (!t || state.phase === 'over') return;
+    const c = COACH[t.step];
+    const age = state.time - t.stepAt;
+    const cx = ox + (WORLD_W * scale) / 2;
+    const w = Math.min(cssW - 24, WORLD_W * scale - 16, 380), pad = 14;
+    ctx.font = 'bold 16px system-ui, sans-serif';
+    const main = wrapText(c.text, w - pad * 2);
+    ctx.font = '13px system-ui, sans-serif';
+    const sub = wrapText(c.sub, w - pad * 2);
+    const h = pad + main.length * 21 + sub.length * 17 + 22;
+    ctx.globalAlpha = clamp(age * 4, 0, 1);
+    const pop = 1 + Math.max(0, 0.2 - age) * 0.4;
+    ctx.save();
+    ctx.translate(cx, y + h / 2); ctx.scale(pop, pop); ctx.translate(-cx, -(y + h / 2));
+    ctx.fillStyle = 'rgba(10, 25, 40, 0.72)';
+    roundRect(cx - w / 2, y, w, h, 14);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 209, 102, ${age < 1.5 ? 0.9 : 0.35})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    let ly = y + pad + 13;
+    ctx.fillStyle = '#ffd166';
+    ctx.font = 'bold 16px system-ui, sans-serif';
+    for (const l of main) { ctx.fillText(l, cx, ly); ly += 21; }
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = '13px system-ui, sans-serif';
+    for (const l of sub) { ctx.fillText(l, cx, ly - 2); ly += 17; }
+    const n = COACH.length, gap = 12, dx = cx - ((n - 1) * gap) / 2;
+    for (let k = 0; k < n; k++) {
+      ctx.fillStyle = k < t.step ? '#7dffb0' : k === t.step ? '#ffd166' : 'rgba(255,255,255,0.25)';
+      ctx.beginPath(); ctx.arc(dx + k * gap, y + h - 11, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+  }
+
+  function drawTrainingOver(cx) {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, cssW, cssH);
+    const y0 = cssH * 0.34, maxW = Math.min(cssW - 32, WORLD_W * scale - 16);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 34px system-ui, sans-serif';
+    if (state.trainingDone) {
+      ctx.fillText("You're ready! 🎉", cx, y0);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      fitText('You know the moves. More surprises wait higher up.', cx, y0 + 44, maxW, 15);
+      ctx.fillStyle = '#7dffb0';
+      fitText("Today's daily is the same climb for everyone.", cx, y0 + 72, maxW, 15);
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText(state.time - state.overAt > 0.6 ? 'Tap to go to the daily' : '', cx, y0 + 130);
+    } else {
+      ctx.fillText('Splash!', cx, y0);
+      ctx.font = '20px system-ui, sans-serif';
+      ctx.fillText(`${heightMeters()} m`, cx, y0 + 40);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      fitText('The water got you. Practice makes perfect!', cx, y0 + 72, maxW, 15);
+      ctx.fillStyle = '#7dffb0';
+      fitText("Training doesn't count toward your stats.", cx, y0 + 98, maxW, 14);
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.font = '15px system-ui, sans-serif';
+      ctx.fillText('Tap anywhere to try again', cx, y0 + 150);
+    }
+    ctx.textAlign = 'left';
   }
 
   // ---------- Celebrations ----------
@@ -692,6 +888,7 @@
   // power-downs begin, so every climber who gets that far meets one.
   function spawnBalloons() {
     if (!levelLive()) return;
+    if (learn()) return spawnTrainingBalloons();
     while (state.baseY + state.nextBalloonM * UNITS_PER_METER < state.cam + viewH + 600) {
       const m = state.nextBalloonM;
       const late = m >= state.badFromM;
@@ -733,6 +930,7 @@
     state.toast = { kind, at: state.time };
     state.runPopped++;
     if (daily()) badge(Progress.notePop(kind));
+    if (learn()) state.training.popped[kind] = true;
     if (kind === 'ouch' && hurt(1 - hand)) badge(mainAward('doubleouch'));
     sfx.pop();
     (POWERS[kind].good ? sfx.good : sfx.bad)();
@@ -850,7 +1048,11 @@
     e.preventDefault();
     if (state.phase === 'over') {
       // The daily is one run a day: afterwards, back to the start screen.
-      if (state.time - state.overAt > 0.6) { if (daily() && !state.missed) showStart(); else newGame(); }
+      if (state.time - state.overAt > 0.6) {
+        if (learn() && state.trainingDone) finishTraining();
+        else if (daily() && !state.missed) showStart();
+        else newGame();
+      }
       return;
     }
     if (state.rocket) return;
@@ -991,6 +1193,7 @@
     }
     state.dropping = false;
     startPlaying();
+    if (learn()) trainingGrab(hold);
   }
 
   // Slingshot: hand flies opposite to the drag, speed scales with drag length.
@@ -1012,6 +1215,7 @@
     sfx.throw();
     h.autoTarget = active('autoGrab') ? autoGrabTarget(i, v) : null;
     startPlaying();
+    if (learn()) state.training.thrown = true;
   }
 
   // ---------- Simulation ----------
@@ -1102,6 +1306,7 @@
 
     if (body.x < BODY_R) { body.x = BODY_R; body.vx = Math.abs(body.vx) * 0.5; }
     if (body.x > WORLD_W - BODY_R) { body.x = WORLD_W - BODY_R; body.vx = -Math.abs(body.vx) * 0.5; }
+    if (learn()) standOnFloor(dt);
 
     // Hands.
     hands.forEach((h, i) => {
@@ -1130,11 +1335,13 @@
     }
     stepMood();
     stepWater(dt);
+    if (learn()) stepTraining();
 
     // Camera follows the body, never dipping far below the water.
     // While dropping in it holds still until the climber nears the bottom.
     let target = Math.max(body.y - viewH * 0.4, state.water - 60);
     if (state.dropping) target = Math.max(Math.min(state.cam, body.y - viewH * 0.25), state.water - 60);
+    if (learn() && state.training.floor) target = Math.max(target, state.training.floor.y - 40); // the floor sits at the bottom
     state.cam += (target - state.cam) * (1 - Math.exp(-4 * dt));
   }
 
@@ -1151,10 +1358,11 @@
       gameOver();
       return;
     }
-    if (state.phase === 'playing' && !sprint() && !active('freeze')) {
+    if (state.phase === 'playing' && !sprint() && !active('freeze') && (!learn() || state.training.water)) {
       const climbed = Math.max(0, state.maxY - state.baseY);
       let speed = (T.waterSpeed + T.waterRamp * climbed / 1000) * DAY.water;
-      if (state.water < state.cam - 200) speed *= 4; // catch up if you're far ahead
+      if (learn()) speed *= TRAINING_WATER;
+      if (state.water < state.cam - (learn() ? 320 : 200)) speed *= learn() ? 2 : 4; // catch up if you're far ahead
       if (active('flood')) speed *= 1.25;
       state.water += speed * dt;
     }
@@ -1175,8 +1383,8 @@
     state.unit = pickUnit(heightMeters());
     const m = heightMeters();
     state.timeUp = sprint() && climbing && state.water < state.body.y;
-    if (TUNING && !daily()) {
-      state.result = { isBest: false, newBadges: [], newUnlocks: [] }; // tuned runs don't count
+    if ((TUNING && !daily()) || learn()) {
+      state.result = { isBest: false, newBadges: [], newUnlocks: [] }; // tuned runs and training don't count
     } else if (sprint()) {
       state.result = Progress.recordSprint({ m, unlockedBefore: state.unlockedBefore });
     } else if (!daily()) {
@@ -1190,7 +1398,7 @@
     }
     state.newBest = state.result.isBest;
     state.best = modeBest();
-    if (climbing) Analytics.event(daily() ? 'daily-played' : `${mode}-run`);
+    if (climbing) Analytics.event(daily() ? 'daily-played' : learn() ? 'learn-splash' : `${mode}-run`);
   }
 
   // ---------- Rendering ----------
@@ -1290,7 +1498,7 @@
       }
       ctx.font = '12px system-ui, sans-serif';
       ctx.textAlign = 'right';
-      for (const [m, icon, name] of LANDMARKS) {
+      for (const [m, icon, name] of learn() ? [] : LANDMARKS) {
         const yy = sy(state.baseY + m * UNITS_PER_METER);
         if (yy < -20 || yy > cssH + 20) continue;
         ctx.strokeStyle = 'rgba(255,255,255,0.35)';
@@ -1314,7 +1522,7 @@
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 13px system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`${o.checkpoint} m`, ox + o.x * scale, yy - 6);
+      ctx.fillText(o.finish ? 'Finish!' : `${o.checkpoint} m`, ox + o.x * scale, yy - 6);
       ctx.textAlign = 'left';
     }
     worldTransform();
@@ -1479,7 +1687,7 @@
 
   function drawLedge(h) {
     const theme = ledgeTheme();
-    const special = h.icy || h.checkpoint;
+    const special = h.icy || h.checkpoint || h.floor;
     const color = special ? h.color : theme.colors[h.ci || 0];
     if (h.ghost) {
       // Faint fill and a dotted outline: obvious if you look, easy to miss in a hurry.
@@ -1910,21 +2118,24 @@
     ctx.fillText(mText, ox + 14, top + 26);
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText(`${MODE_LABEL[mode]}${daily() ? 'Best' : 'best'} ${state.best} m`, ox + 14, top + 46);
+    if (!learn()) ctx.fillText(`${MODE_LABEL[mode]}${daily() ? 'Best' : 'best'} ${state.best} m`, ox + 14, top + 46);
     if (sprint()) drawSprintClock(top);
-    if (daily()) {
+    if (daily() || learn()) {
       ctx.textAlign = 'center';
       ctx.font = 'bold 12px system-ui, sans-serif';
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
-      ctx.fillText(`📅 DAILY #${day.n}`, ox + (WORLD_W * scale) / 2, top + 10);
+      ctx.fillText(learn() ? '🎓 TRAINING' : `📅 DAILY #${day.n}`, ox + (WORLD_W * scale) / 2, top + 10);
       ctx.textAlign = 'left';
     }
+    if (learn()) drawCoach(top + 62);
     drawEffects(top + 60);
     drawToast();
 
     ctx.textAlign = 'center';
     const cx = ox + (WORLD_W * scale) / 2;
-    if (state.phase === 'ready') {
+    if (learn() && state.phase === 'over') {
+      drawTrainingOver(cx);
+    } else if (state.phase === 'ready' && !learn()) {
       const by = cssH * 0.86;
       [LEFT, RIGHT].forEach((i) => {
         const hx = i === LEFT ? cssW * 0.25 : cssW * 0.75;
@@ -2153,7 +2364,7 @@
   });
 
   function syncOverlay() {
-    const show = started && state.phase === 'over' && !state.missed && tunePanel.hidden && !Menu.isOpen();
+    const show = started && state.phase === 'over' && !state.missed && !learn() && tunePanel.hidden && !Menu.isOpen();
     if (overActions.hidden === show) { // only touch the DOM when it changes
       overActions.hidden = !show;
       if (!show) shareStatus.textContent = '';
@@ -2263,8 +2474,8 @@
         if (!doneTimer) doneTimer = setInterval(tick, 1000);
       }
     } else {
-      $('start-day').textContent = sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
-      $('start-line').textContent = c ? `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`
+      $('start-day').textContent = learn() ? '🎓 Training' : sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
+      $('start-line').textContent = learn() ? "Learn the moves one step at a time.\nNo water until you're ready." : c ? `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`
         : modeBest() > 0 ? `Your best: ${modeBest()} m` : '';
     }
     if (!result && doneTimer) { clearInterval(doneTimer); doneTimer = null; }
@@ -2332,6 +2543,6 @@
   newGame();
   renderStart();
   startEl.focus();
-  if (Tutorial.shouldShow) Tutorial.open(true); // a brand-new player's first visit
+  if (Tutorial.shouldShow && !learn()) Tutorial.open(true); // a brand-new player's first visit
   requestAnimationFrame(frame);
 })();

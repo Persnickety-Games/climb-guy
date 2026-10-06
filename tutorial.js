@@ -229,8 +229,14 @@ window.Tutorial = (() => {
   let seen = false;
   try { seen = localStorage.getItem(KEY) === 'seen'; } catch {}
 
+  // Finishing training counts as having seen the ropes.
+  function markSeen() {
+    seen = true;
+    try { localStorage.setItem(KEY, 'seen'); } catch {}
+  }
+
   return {
-    open, close,
+    open, close, markSeen,
     isOpen: () => !root.hidden,
     // Only for brand-new players: anyone who has played before has seen the ropes.
     get shouldShow() { return !seen && !Progress.stats().totalRuns && !Progress.endlessRuns && !Progress.sprintRuns; },

@@ -2,6 +2,12 @@
 
 Ideas captured for later. Nothing here is built yet unless marked done.
 
+## Training (in progress, unlisted at /learn)
+
+Testers find the start hard, then fun once it clicks. Training is a guided first climb (see README). Next steps once it's been tried:
+- Show it to brand-new players instead of (or before) the How-to-play cards, and add it to the ☰ menu.
+- Maybe restart a splash after the water from 10 m instead of from the floor.
+
 ## Daily game (Wordle-style)
 
 **Done (first version):** one run a day, the same level for everyone, reset at midnight Eastern, seeded variations of the normal parameters, streaks (with a 7-day badge), daily share and challenge links, and a start screen that points to other modes once the daily is done.
