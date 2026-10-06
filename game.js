@@ -274,6 +274,7 @@
   function letGo(i) {
     const h = state.hands[i];
     if (h.state !== 'held') return;
+    if (learn()) trainingLetGo(i);
     h.state = 'returning';
     h.hold = null;
     h.autoHeld = false;
@@ -452,7 +453,10 @@
     const m = (y - state.baseY) / UNITS_PER_METER;
     if (m < state.nextCheckpointM) return null;
     const cp = { x: WORLD_W / 2, y, w: 230, h: 24, color: '#c9a227', checkpoint: state.nextCheckpointM };
-    if (learn()) cp.finish = true;
+    if (learn()) { // just the one, at exactly 40 m (this row gives way to it)
+      state.nextCheckpointM = Infinity;
+      return finishLedge(state.baseY + FINISH_M * UNITS_PER_METER + FINISH_ABOVE);
+    }
     state.nextCheckpointM += CHECKPOINT_EVERY_M;
     return cp;
   }
@@ -556,71 +560,148 @@
 
   // ---------- Training ----------
   // A guided first climb (?mode=learn, or climbguy.xyz/learn) for players who
-  // find the start hard. You start standing on a floor that catches you, with
-  // no water. A coach box at the top teaches one thing at a time. At 10 m the
-  // water starts, slower than usual. Then come a green balloon, moving ledges
-  // and a red balloon, much sooner than in the real climb. A golden ledge at
-  // 60 m is the finish. Ghosts, ice, wind and birds are left as surprises for
-  // later. Nothing here counts toward stats or badges. It has its own fixed
-  // seed, so it never touches the daily.
+  // find the start hard. It has two parts:
+  //  1. Skills: you start standing on a floor that catches you. There's no
+  //     water and no height count. A coach box shows one move at a time and
+  //     moves on only when you've done it: throw, grab and hang on, grab with
+  //     the other hand (keeping the first thumb down), let go low to swing up,
+  //     then a few more swing-ups.
+  //  2. Climb: the height count starts from where you are, the water starts
+  //     (slower than usual), and the goal is a golden finish ledge 40 m up.
+  //     Balloons and moving ledges get a short callout as they come on
+  //     screen, but nothing is required: you always end at the finish.
+  // A splash in part 2 restarts at part 2. Ghosts, ice, wind and birds are
+  // left as surprises for later. Nothing here counts toward stats or badges.
+  // It has its own fixed seed, so it never touches the daily.
   const TRAINING_WATER = 0.6;   // water speed compared to normal
-  const WATER_AT_M = 10;
-  const FINISH_M = 60;
-  const TRAINING_MOVERS_M = 26;
-  const TRAINING_BALLOONS = [[20, 'freeze'], [33, 'swollen'], [43, 'flood']];
+  const FINISH_M = 40;
+  const FINISH_ABOVE = 140;     // the ledge sits this far above 40 m, so hanging from it reads about 40 m
+  const TRAINING_BALLOONS = [[12, 'freeze'], [21, 'swollen'], [29, 'flood']]; // meters into the climb
+  const MOVERS_FROM_M = 12;     // moving ledges from here in the climb, every few meters
+  const SWINGS = 3;             // swing-ups to practice before the climb
+  const SETTLE_SECS = 1;        // hang on this long to count as holding a ledge
+  const CARD_MIN_SECS = 3;      // each card stays up at least this long, so there's time to read it
+  const CALLOUT_SECS = 4.5;
+  let skillsDone = false;       // after the skills part, a splash restarts at the climb
 
   const COACH = [
-    { text: 'Drag a thumb DOWN, then let go.', sub: 'That hand flies up, like a slingshot. Left side of the screen = left hand.', done: t => t.thrown },
-    { text: 'Tap while a hand touches a ledge to grab it.', sub: 'Keep your thumb down to hang on. Lift it to let go.', done: t => t.settled },
-    { text: 'Now throw your other hand higher, and grab.', sub: 'Keep your other thumb pressed down the whole time, or that hand lets go!', start: () => { const t = state.training; t.swapFrom = t.held[0] > 0 || t.held[1] > 0 ? t.held.findIndex(x => x > 0) : t.lastHand; t.handHeld = [false, false]; },
-      done: t => (t.swapFrom >= 0 ? t.handHeld[1 - t.swapFrom] : t.handHeld[0] || t.handHeld[1]) },
-    { text: 'Let go of your LOWER hand to swing up.', sub: "Climb to 10 m. Fall? The floor catches you here.", done: t => t.settled && hangingM() >= WATER_AT_M },
-    { start: startTrainingWater, text: 'The water is rising! Stay above it.', sub: "It's slow here. In the real climb it's faster, and there's no floor.", done: t => t.settled && hangingM() >= 16 },
-    { text: 'Touch the green balloon with a hand.', sub: 'Green balloons help. This one freezes the water.', done: t => t.settled && (t.popped.freeze || hangingM() >= 24) },
-    { text: 'Some ledges slide around.', sub: 'Watch one, then time your grab.', done: t => t.settled && hangingM() >= 39 },
-    { text: 'Red balloons are trouble. Steer clear!', sub: 'This one makes the water rise faster.', done: t => t.settled && hangingM() >= 49 },
-    { text: `Grab the golden ledge at ${FINISH_M} m to finish!`, sub: 'Almost there.', done: t => t.finished },
+    { text: 'Drag a thumb DOWN, then let go.', sub: 'That hand flies up, like a slingshot. Left side of the screen = left hand.',
+      done: t => t.thrown },
+    { text: 'Tap while a hand touches a ledge to grab it.', sub: 'Keep your thumb down to hang on. Lift it to let go.',
+      done: t => t.settled },
+    { text: 'Now throw your other hand higher, and grab.', sub: 'Keep your other thumb pressed down the whole time, or that hand lets go!',
+      done: t => t.both >= 0.3 },
+    { text: 'Let go of your LOWER hand to swing up.', sub: 'Then grab a new ledge with it.',
+      start: t => { t.swingsAt = t.swings; },
+      done: t => t.swings > t.swingsAt && t.both >= 0.3 },
+    { text: 'Nice! Keep going: grab high, let go low.', sub: t => `Swing up ${SWINGS} more times (${Math.min(SWINGS, t.swings - t.swingsAt)}/${SWINGS}).`,
+      start: t => { t.swingsAt = t.swings; },
+      done: t => t.swings - t.swingsAt >= SWINGS && t.both >= 0.3 },
+    { text: t => `Climb to the finish! ${Math.max(0, FINISH_M - heightMeters())} m to go`, sub: "The water is rising behind you. It's slower here than in the real climb.",
+      start: startClimb },
   ];
+  const CLIMB_STEP = COACH.length - 1;
 
   const floorTop = (f) => f.y + f.h / 2 + BODY_R;
-  const hangingM = () => (state.body.y - state.baseY) / UNITS_PER_METER; // where you are now, not your best
-  const SETTLE_SECS = 1;    // hang on this long before a card counts as done
-  const CARD_MIN_SECS = 3;   // and each card stays up at least this long, so there's time to read it
+  const realHold = (h) => h.state === 'held' && h.hold && !h.hold.floor;
 
   function startTraining(floor) {
-    state.training = { step: 0, stepAt: 0, floor, thrown: false, held: [0, 0], handHeld: [false, false], lastHand: -1, settled: false, water: false, popped: {}, finished: false, balloons: TRAINING_BALLOONS.slice() };
+    state.training = {
+      step: 0, stepAt: 0, floor, thrown: false, held: [0, 0], settled: false, both: 0, swings: 0, swingsAt: 0,
+      water: false, climbing: false, callouts: [], callout: null, calledMover: false, finished: false, balloons: [],
+    };
+    if (skillsDone) goToStep(CLIMB_STEP);
   }
 
-  // Where things start in training (called from initFeatures).
+  function goToStep(n) {
+    const t = state.training;
+    t.step = n;
+    t.stepAt = state.time;
+    if (COACH[n].start) COACH[n].start(t);
+  }
+
+  // Where things start in training (called from initFeatures): nothing until the climb.
   function trainingFeatures() {
-    state.nextBalloonM = Infinity; // placed by hand instead (spawnTrainingBalloons)
-    state.nextMoverM = TRAINING_MOVERS_M;
+    state.nextBalloonM = state.nextMoverM = Infinity;
     state.nextGhostM = state.nextIcyM = state.windFromM = state.birdFromM = Infinity;
     state.wind.nextM = state.nextBirdM = Infinity;
-    state.nextCheckpointM = FINISH_M;
+    state.nextCheckpointM = Infinity;
     state.nextMilestoneM = Infinity;
     state.landmarkIdx = LANDMARKS.length;
   }
 
-  // One card at a time: each needs its goal met while hanging on a ledge for
-  // a second, and stays up a moment, so a quick grab can't skip ahead.
-  function stepTraining(dt) {
-    const t = state.training;
-    state.hands.forEach((h, i) => {
-      t.held[i] = h.state === 'held' && h.hold && !h.hold.floor ? t.held[i] + dt : 0;
-      if (t.held[i] >= SETTLE_SECS) { t.handHeld[i] = true; t.lastHand = i; }
-    });
-    t.settled = t.held.some(x => x >= SETTLE_SECS);
-    if (t.step < COACH.length - 1 && state.time - t.stepAt >= CARD_MIN_SECS && COACH[t.step].done(t)) {
-      t.step++;
-      t.stepAt = state.time;
-      if (COACH[t.step].start) COACH[t.step].start();
-      sfx.milestone();
-    }
+  // A swing-up: letting go of the lower hand while the higher one holds on.
+  function trainingLetGo(i) {
+    const t = state.training, other = state.hands[1 - i];
+    if (t && realHold(other) && other.y > state.hands[i].y + 10) t.swings++;
   }
 
+  // The skills cards move on when you've done the move, one at a time.
+  function stepTraining(dt) {
+    const t = state.training;
+    state.hands.forEach((h, i) => { t.held[i] = realHold(h) ? t.held[i] + dt : 0; });
+    t.settled = t.held.some(x => x >= SETTLE_SECS);
+    t.both = t.held[0] > 0 && t.held[1] > 0 ? t.both + dt : 0;
+    if (t.floor && state.water >= t.floor.y) t.floor = null; // the water has reached the floor
+    if (t.step < CLIMB_STEP && state.time - t.stepAt >= CARD_MIN_SECS && COACH[t.step].done(t)) {
+      goToStep(t.step + 1);
+      sfx.milestone();
+    }
+    if (!t.climbing) return;
+    // Callouts for balloons and moving ledges as they come into view.
+    const top = state.cam + viewH - 60;
+    for (const b of state.balloons) {
+      if (b.called || b.y > top) continue;
+      b.called = true;
+      const p = POWERS[b.kind];
+      t.callouts.push(p.good
+        ? { text: `${p.icon} Green balloon! Touch it with a hand.`, sub: `Green ones help. ${p.name}: ${p.text}.` }
+        : { text: `${p.icon} Red balloon! Steer clear.`, sub: `Red ones are trouble. ${p.name}: ${p.text}.` });
+    }
+    if (!t.calledMover && state.holds.some(o => o.move && o.y < top && o.y > state.cam)) {
+      t.calledMover = true;
+      t.callouts.push({ text: '↔️ Moving ledge!', sub: 'Watch it slide, then time your grab.' });
+    }
+    const free = state.time - t.stepAt > CARD_MIN_SECS + 1 && (!t.callout || state.time - t.callout.at > CALLOUT_SECS);
+    if (free && t.callouts.length) t.callout = { ...t.callouts.shift(), at: state.time };
+    if (state.hands.some(h => h.state === 'held' && h.hold && h.hold.finish)) completeTraining();
+  }
 
-  // Standing on the floor: it holds the body up until the water arrives.
+  // Part 2: start counting from here, start the water, and set out the course.
+  function startClimb(t) {
+    skillsDone = true;
+    t.climbing = true;
+    state.baseY = state.body.y;
+    state.maxY = state.body.y;
+    state.lastHeightM = 0;
+    const floorY = t.floor ? t.floor.y : -Infinity;
+    state.water = Math.max(floorY - 100, state.cam - 30);
+    t.water = true;
+    t.balloons = TRAINING_BALLOONS.slice();
+    // Rows already built above get the finish ledge and moving ledges now;
+    // rows built later get them as they're made.
+    const finishY = state.baseY + FINISH_M * UNITS_PER_METER + FINISH_ABOVE;
+    if (state.holdsTop >= finishY - 40) {
+      state.holds = state.holds.filter(o => Math.abs(o.y - finishY) > 70);
+      state.holds.push(finishLedge(finishY));
+    } else state.nextCheckpointM = FINISH_M + FINISH_ABOVE / UNITS_PER_METER;
+    let next = MOVERS_FROM_M;
+    for (const o of state.holds.slice().sort((a, b) => a.y - b.y)) {
+      const m = (o.y - state.baseY) / UNITS_PER_METER;
+      if (m < next || o.finish || o.floor || state.hands.some(h => h.hold === o)) continue;
+      makeMover(o);
+      next = m + R.features.r(5, 9);
+    }
+    state.nextMoverM = Math.max(next, (state.holdsTop - state.baseY) / UNITS_PER_METER);
+    if (skillsDone && state.phase === 'ready') return; // a retry: no fanfare
+    celebrate('🌊 Uh oh, water!', 'Climb to the finish!');
+  }
+
+  function finishLedge(y) {
+    return { x: WORLD_W / 2, y, w: WORLD_W - 40, h: 24, color: '#c9a227', checkpoint: FINISH_M, finish: true };
+  }
+
+  // Standing on the floor: it holds the body up until the water reaches it.
   function standOnFloor(dt) {
     const t = state.training, body = state.body;
     if (!t.floor || body.y >= floorTop(t.floor)) return;
@@ -633,14 +714,6 @@
     body.vx *= Math.exp(-8 * dt);
   }
 
-  function startTrainingWater() {
-    const t = state.training;
-    state.water = Math.max(t.floor.y + t.floor.h / 2, state.cam - 30);
-    t.floor = null;
-    t.water = true;
-    celebrate('🌊 Uh oh, water!', 'Keep climbing!');
-  }
-
   function spawnTrainingBalloons() {
     const t = state.training;
     while (t.water && t.balloons.length && state.baseY + t.balloons[0][0] * UNITS_PER_METER < state.cam + viewH + 600) {
@@ -649,9 +722,8 @@
     }
   }
 
-  function trainingGrab(hold) {
+  function completeTraining() {
     const t = state.training;
-    if (!hold.finish || t.finished) return;
     t.finished = true;
     state.trainingDone = true;
     state.phase = 'over';
@@ -687,15 +759,19 @@
   function drawCoach(y) {
     const t = state.training;
     if (!t || state.phase === 'over') return;
-    const c = COACH[t.step];
-    const age = state.time - t.stepAt;
+    // A callout (balloon, moving ledge) takes over the box for a few seconds.
+    const call = t.callout && state.time - t.callout.at < CALLOUT_SECS ? t.callout : null;
+    const c = call || COACH[t.step];
+    const val = (x) => (typeof x === 'function' ? x(t) : x);
+    const age = state.time - (call ? call.at : t.stepAt);
     const cx = ox + (WORLD_W * scale) / 2;
     const w = Math.min(cssW - 24, WORLD_W * scale - 16, 380), pad = 14;
     ctx.font = 'bold 16px system-ui, sans-serif';
-    const main = wrapText(c.text, w - pad * 2);
+    const main = wrapText(val(c.text), w - pad * 2);
     ctx.font = '13px system-ui, sans-serif';
-    const sub = wrapText(c.sub, w - pad * 2);
-    const h = pad + main.length * 21 + sub.length * 17 + 22;
+    const sub = wrapText(val(c.sub), w - pad * 2);
+    const dots = !call && !t.climbing; // one dot per skill
+    const h = pad + main.length * 21 + sub.length * 17 + (dots ? 22 : 6);
     ctx.globalAlpha = clamp(age * 4, 0, 1);
     const pop = 1 + Math.max(0, 0.2 - age) * 0.4;
     ctx.save();
@@ -708,13 +784,13 @@
     ctx.stroke();
     ctx.textAlign = 'center';
     let ly = y + pad + 13;
-    ctx.fillStyle = '#ffd166';
+    ctx.fillStyle = call ? '#7df9ff' : '#ffd166';
     ctx.font = 'bold 16px system-ui, sans-serif';
     for (const l of main) { ctx.fillText(l, cx, ly); ly += 21; }
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.font = '13px system-ui, sans-serif';
     for (const l of sub) { ctx.fillText(l, cx, ly - 2); ly += 17; }
-    const n = COACH.length, gap = 12, dx = cx - ((n - 1) * gap) / 2;
+    const n = dots ? CLIMB_STEP : 0, gap = 12, dx = cx - ((n - 1) * gap) / 2;
     for (let k = 0; k < n; k++) {
       ctx.fillStyle = k < t.step ? '#7dffb0' : k === t.step ? '#ffd166' : 'rgba(255,255,255,0.25)';
       ctx.beginPath(); ctx.arc(dx + k * gap, y + h - 11, 3.5, 0, Math.PI * 2); ctx.fill();
@@ -750,7 +826,7 @@
       fitText("Training doesn't count toward your stats.", cx, y0 + 98, maxW, 14);
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText('Tap anywhere to try again', cx, y0 + 150);
+      ctx.fillText('Tap to try the climb again', cx, y0 + 150);
     }
     ctx.textAlign = 'left';
   }
@@ -941,7 +1017,6 @@
     state.toast = { kind, at: state.time };
     state.runPopped++;
     if (daily()) badge(Progress.notePop(kind));
-    if (learn()) state.training.popped[kind] = true;
     if (kind === 'ouch' && hurt(1 - hand)) badge(mainAward('doubleouch'));
     sfx.pop();
     (POWERS[kind].good ? sfx.good : sfx.bad)();
@@ -1204,7 +1279,6 @@
     }
     state.dropping = false;
     startPlaying();
-    if (learn()) trainingGrab(hold);
   }
 
   // Slingshot: hand flies opposite to the drag, speed scales with drag length.
@@ -1658,7 +1732,7 @@
     ctx.lineWidth = 1;
     const step10 = UNITS_PER_METER * 10;
     const base = state.baseY;
-    for (let y = Math.ceil((state.cam - base) / step10) * step10 + base; y < state.cam + viewH; y += step10) {
+    if (!learn() || state.training.climbing) for (let y = Math.ceil((state.cam - base) / step10) * step10 + base; y < state.cam + viewH; y += step10) {
       const sy = cssH - (y - state.cam) * scale;
       ctx.beginPath();
       ctx.moveTo(ox, sy); ctx.lineTo(ox + WORLD_W * scale, sy);
@@ -2126,7 +2200,7 @@
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 28px system-ui, sans-serif';
     const mText = `${heightMeters()} m`;
-    ctx.fillText(mText, ox + 14, top + 26);
+    if (!learn() || state.training.climbing) ctx.fillText(mText, ox + 14, top + 26); // training counts only in the climb
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     if (!learn()) ctx.fillText(`${MODE_LABEL[mode]}${daily() ? 'Best' : 'best'} ${state.best} m`, ox + 14, top + 46);
@@ -2486,7 +2560,7 @@
       }
     } else {
       $('start-day').textContent = learn() ? '🎓 Training' : sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
-      $('start-line').textContent = learn() ? "Learn the moves one step at a time.\nNo water until you're ready." : c ? `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`
+      $('start-line').textContent = learn() ? "Learn the moves one at a time,\nthen climb to the finish." : c ? `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`
         : modeBest() > 0 ? `Your best: ${modeBest()} m` : '';
     }
     if (!result && doneTimer) { clearInterval(doneTimer); doneTimer = null; }

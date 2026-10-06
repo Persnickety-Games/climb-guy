@@ -6,7 +6,6 @@ Ideas captured for later. Nothing here is built yet unless marked done.
 
 Testers find the start hard, then fun once it clicks. Training is a guided first climb (see README). Next steps once it's been tried:
 - Show it to brand-new players instead of (or before) the How-to-play cards, and add it to the ☰ menu.
-- Maybe restart a splash after the water from 10 m instead of from the floor.
 
 ## Daily game (Wordle-style)
 
