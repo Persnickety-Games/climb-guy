@@ -15,6 +15,10 @@ The daily level is generated on each phone from the date (`daily.js`) plus the g
 
 When unsure, treat it as level-affecting. Develop and test it, keep it off `main`, and push it after midnight Eastern (or when the person asks).
 
+## Player-facing text: keep it short
+
+People don't like reading. Menu cards, buttons, prompts and callouts say only what's needed to act, in as few words as possible. Leave out explanations of why something exists or who it's for (e.g. a Tutorial card is "Learn the basics.", not "in case you skipped it"). Most things should be intuitive without text.
+
 ## Don't change
 
 - `EPOCH` in `daily.js` (Daily #1 = 2026-10-02): players have already shared daily numbers.
