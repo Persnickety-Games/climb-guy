@@ -571,20 +571,23 @@
 
   const COACH = [
     { text: 'Drag a thumb DOWN, then let go.', sub: 'That hand flies up, like a slingshot. Left side of the screen = left hand.', done: t => t.thrown },
-    { text: 'Tap while a hand touches a ledge to grab it.', sub: 'Keep your thumb down to hang on. Lift it to let go.', done: t => t.grabbed },
-    { text: 'Now throw your other hand higher, and grab.', sub: 'You climb by swapping hands.', done: () => climbedM() >= 4 },
-    { text: 'Let go of your LOWER hand to swing up.', sub: "Climb to 10 m. Fall? The floor catches you here.", done: () => climbedM() >= WATER_AT_M },
-    { start: startTrainingWater, text: 'The water is rising! Stay above it.', sub: "It's slow here. In the real climb it's faster, and there's no floor.", done: () => climbedM() >= 16 },
-    { text: 'Touch the green balloon with a hand.', sub: 'Green balloons help. This one freezes the water.', done: t => t.popped.freeze || climbedM() >= 24 },
-    { text: 'Some ledges slide around.', sub: 'Watch one, then time your grab.', done: () => climbedM() >= 39 },
-    { text: 'Red balloons are trouble. Steer clear!', sub: 'This one makes the water rise faster.', done: () => climbedM() >= 49 },
+    { text: 'Tap while a hand touches a ledge to grab it.', sub: 'Keep your thumb down to hang on. Lift it to let go.', done: t => t.settled },
+    { text: 'Now throw your other hand higher, and grab.', sub: 'You climb by swapping hands.', done: t => t.settled && t.handHeld[0] && t.handHeld[1] },
+    { text: 'Let go of your LOWER hand to swing up.', sub: "Climb to 10 m. Fall? The floor catches you here.", done: t => t.settled && hangingM() >= WATER_AT_M },
+    { start: startTrainingWater, text: 'The water is rising! Stay above it.', sub: "It's slow here. In the real climb it's faster, and there's no floor.", done: t => t.settled && hangingM() >= 16 },
+    { text: 'Touch the green balloon with a hand.', sub: 'Green balloons help. This one freezes the water.', done: t => t.settled && (t.popped.freeze || hangingM() >= 24) },
+    { text: 'Some ledges slide around.', sub: 'Watch one, then time your grab.', done: t => t.settled && hangingM() >= 39 },
+    { text: 'Red balloons are trouble. Steer clear!', sub: 'This one makes the water rise faster.', done: t => t.settled && hangingM() >= 49 },
     { text: `Grab the golden ledge at ${FINISH_M} m to finish!`, sub: 'Almost there.', done: t => t.finished },
   ];
 
   const floorTop = (f) => f.y + f.h / 2 + BODY_R;
+  const hangingM = () => (state.body.y - state.baseY) / UNITS_PER_METER; // where you are now, not your best
+  const SETTLE_SECS = 1;    // hang on this long before a card counts as done
+  const CARD_MIN_SECS = 1.5; // and each card stays up at least this long
 
   function startTraining(floor) {
-    state.training = { step: 0, stepAt: 0, floor, thrown: false, grabbed: false, water: false, popped: {}, finished: false, balloons: TRAINING_BALLOONS.slice() };
+    state.training = { step: 0, stepAt: 0, floor, thrown: false, held: [0, 0], handHeld: [false, false], settled: false, water: false, popped: {}, finished: false, balloons: TRAINING_BALLOONS.slice() };
   }
 
   // Where things start in training (called from initFeatures).
@@ -598,15 +601,23 @@
     state.landmarkIdx = LANDMARKS.length;
   }
 
-  function stepTraining() {
+  // One card at a time: each needs its goal met while hanging on a ledge for
+  // a second, and stays up a moment, so a quick grab can't skip ahead.
+  function stepTraining(dt) {
     const t = state.training;
-    while (t.step < COACH.length - 1 && COACH[t.step].done(t)) {
+    state.hands.forEach((h, i) => {
+      t.held[i] = h.state === 'held' && h.hold && !h.hold.floor ? t.held[i] + dt : 0;
+      if (t.held[i] >= SETTLE_SECS) t.handHeld[i] = true;
+    });
+    t.settled = t.held.some(x => x >= SETTLE_SECS);
+    if (t.step < COACH.length - 1 && state.time - t.stepAt >= CARD_MIN_SECS && COACH[t.step].done(t)) {
       t.step++;
       t.stepAt = state.time;
       if (COACH[t.step].start) COACH[t.step].start();
       sfx.milestone();
     }
   }
+
 
   // Standing on the floor: it holds the body up until the water arrives.
   function standOnFloor(dt) {
@@ -639,7 +650,6 @@
 
   function trainingGrab(hold) {
     const t = state.training;
-    if (!hold.floor) t.grabbed = true;
     if (!hold.finish || t.finished) return;
     t.finished = true;
     state.trainingDone = true;
@@ -1335,7 +1345,7 @@
     }
     stepMood();
     stepWater(dt);
-    if (learn()) stepTraining();
+    if (learn()) stepTraining(dt);
 
     // Camera follows the body, never dipping far below the water.
     // While dropping in it holds still until the climber nears the bottom.
