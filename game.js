@@ -572,7 +572,8 @@
   const COACH = [
     { text: 'Drag a thumb DOWN, then let go.', sub: 'That hand flies up, like a slingshot. Left side of the screen = left hand.', done: t => t.thrown },
     { text: 'Tap while a hand touches a ledge to grab it.', sub: 'Keep your thumb down to hang on. Lift it to let go.', done: t => t.settled },
-    { text: 'Now throw your other hand higher, and grab.', sub: 'You climb by swapping hands.', done: t => t.settled && t.handHeld[0] && t.handHeld[1] },
+    { text: 'Now throw your other hand higher, and grab.', sub: 'You climb by swapping hands.', start: () => { const t = state.training; t.swapFrom = t.held[0] > 0 || t.held[1] > 0 ? t.held.findIndex(x => x > 0) : t.lastHand; t.handHeld = [false, false]; },
+      done: t => (t.swapFrom >= 0 ? t.handHeld[1 - t.swapFrom] : t.handHeld[0] || t.handHeld[1]) },
     { text: 'Let go of your LOWER hand to swing up.', sub: "Climb to 10 m. Fall? The floor catches you here.", done: t => t.settled && hangingM() >= WATER_AT_M },
     { start: startTrainingWater, text: 'The water is rising! Stay above it.', sub: "It's slow here. In the real climb it's faster, and there's no floor.", done: t => t.settled && hangingM() >= 16 },
     { text: 'Touch the green balloon with a hand.', sub: 'Green balloons help. This one freezes the water.', done: t => t.settled && (t.popped.freeze || hangingM() >= 24) },
@@ -584,10 +585,10 @@
   const floorTop = (f) => f.y + f.h / 2 + BODY_R;
   const hangingM = () => (state.body.y - state.baseY) / UNITS_PER_METER; // where you are now, not your best
   const SETTLE_SECS = 1;    // hang on this long before a card counts as done
-  const CARD_MIN_SECS = 1.5; // and each card stays up at least this long
+  const CARD_MIN_SECS = 3;   // and each card stays up at least this long, so there's time to read it
 
   function startTraining(floor) {
-    state.training = { step: 0, stepAt: 0, floor, thrown: false, held: [0, 0], handHeld: [false, false], settled: false, water: false, popped: {}, finished: false, balloons: TRAINING_BALLOONS.slice() };
+    state.training = { step: 0, stepAt: 0, floor, thrown: false, held: [0, 0], handHeld: [false, false], lastHand: -1, settled: false, water: false, popped: {}, finished: false, balloons: TRAINING_BALLOONS.slice() };
   }
 
   // Where things start in training (called from initFeatures).
@@ -607,7 +608,7 @@
     const t = state.training;
     state.hands.forEach((h, i) => {
       t.held[i] = h.state === 'held' && h.hold && !h.hold.floor ? t.held[i] + dt : 0;
-      if (t.held[i] >= SETTLE_SECS) t.handHeld[i] = true;
+      if (t.held[i] >= SETTLE_SECS) { t.handHeld[i] = true; t.lastHand = i; }
     });
     t.settled = t.held.some(x => x >= SETTLE_SECS);
     if (t.step < COACH.length - 1 && state.time - t.stepAt >= CARD_MIN_SECS && COACH[t.step].done(t)) {
