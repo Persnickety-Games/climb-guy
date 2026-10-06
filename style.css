@@ -375,3 +375,7 @@ canvas { display: block; }
 }
 .tut-actions .tut-next { background: #ffd166; color: #1b1b1b; }
 .tut-actions button[hidden] { display: none; }
+
+/* Bottom-of-menu credit (PixelPicked badge) */
+.menu-credit { margin: 36px 0 8px; text-align: center; opacity: 0.85; }
+.menu-credit img { display: inline-block; max-width: 200px; height: auto; border-radius: 10px; }

@@ -253,6 +253,17 @@ window.Menu = (() => {
       list.append(card);
     }
     body.append(list);
+    // A small "curated by PixelPicked" badge, tucked at the very bottom.
+    const credit = el('div', 'menu-credit');
+    const a = el('a');
+    a.href = 'https://pixelpicked.com/game/4CCudGAQNbT/climb-guy/';
+    a.target = '_blank';
+    a.rel = 'noopener';
+    const img = el('img');
+    Object.assign(img, { src: 'https://api.pixelpicked.com/api/badges/4CCudGAQNbT/live.png?theme=light', alt: 'Approved on PixelPicked', width: 200, height: 43, loading: 'lazy' });
+    a.append(img);
+    credit.append(a);
+    body.append(credit);
   }
 
   // ---------- Customize ----------
