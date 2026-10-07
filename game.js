@@ -220,6 +220,8 @@
     };
     if (daily() || learn()) initFeatures(); // fixed from the ground up, so it's the same for everyone
     if (learn()) startTraining(startHold);
+    state.beginner = learn() || runsSoFar() < BEGINNER_RUNS;
+    state.hints = {};
     placeIdle(LEFT);
     placeIdle(RIGHT);
     generateHolds();
@@ -813,6 +815,125 @@
     ctx.globalAlpha = 1;
   }
 
+  // MOCKUP (unlisted: ?mode=learn&ghost): while a skill card is up and the
+  // player isn't touching anything, a faint thumb (or mouse and keys) shows
+  // the move on the screen, looping.
+  const GHOST = PARAMS.has('ghost');
+  let lastInputAt = 0;
+  const noteInput = () => { lastInputAt = performance.now(); };
+  canvas.addEventListener('pointerdown', noteInput);
+  window.addEventListener('keydown', noteInput);
+
+  function drawGhost() {
+    const t = state.training;
+    if (!GHOST || !t || t.climbing || state.phase === 'over') return;
+    if (state.thumbs.some(th => th && th.mode !== 'grip') || performance.now() - lastInputAt < 1500 || state.time - t.stepAt < 1) return;
+    const held = state.hands.map(h => h.state === 'held');
+    const free = [LEFT, RIGHT].filter(i => !held[i] && state.hands[i].state !== 'flying');
+    const k = ((performance.now() / 1000) % 2.2) / 2.2;
+    const fade = Math.min(1, (performance.now() - lastInputAt - 1500) / 400);
+    ctx.save();
+    ctx.globalAlpha = fade;
+    const step = t.step;
+    // What to show: hold (a thumb staying down), throw (drag down, let go), tap, lift.
+    const acts = [];
+    if (step === 0) acts.push(['throw', free.includes(LEFT) || !free.length ? LEFT : RIGHT]);
+    else if (step === 1) acts.push(['tap', state.hands.findIndex(h => h.state === 'flying') >= 0 ? state.hands.findIndex(h => h.state === 'flying') : LEFT]);
+    else if (held[0] && held[1]) {
+      const low = state.hands[0].y < state.hands[1].y ? LEFT : RIGHT;
+      acts.push(['hold', 1 - low], ['lift', low]);
+    } else {
+      const h = held.indexOf(true);
+      if (h >= 0) acts.push(['hold', h], ['throw', 1 - h]);
+      else acts.push(['throw', LEFT]);
+    }
+    for (const [act, i] of acts) (Controls.mouse ? ghostDesk : ghostTouch)(act, i, k);
+    ctx.restore();
+  }
+
+  function ghostThumb(x, y, pressed, label) {
+    ctx.fillStyle = `rgba(255,255,255,${pressed ? 0.35 : 0.12})`;
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, pressed ? 24 : 28, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.font = '30px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('👆', x + 4, y + 40);
+    if (label) {
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, x, y - 36);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  function ghostTouch(act, i, k) {
+    const x = cssW * (i === LEFT ? 0.25 : 0.75), y0 = cssH * 0.66;
+    if (act === 'hold') return ghostThumb(x, y0, true, 'HOLD');
+    if (act === 'tap') return ghostThumb(x, y0, k > 0.3 && k < 0.85, k > 0.3 ? 'TAP & HOLD' : 'TAP…');
+    if (act === 'lift') return ghostThumb(x, y0 - (k > 0.5 ? (k - 0.5) * 60 : 0), k <= 0.5, k <= 0.5 ? 'HOLD…' : 'LIFT!');
+    // throw: press, drag down, let go
+    const d = k < 0.15 ? 0 : k < 0.6 ? (k - 0.15) / 0.45 : 1;
+    const y = y0 + d * 100;
+    if (d > 0) {
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ghostThumb(x, y, k > 0.1 && k < 0.65, k < 0.65 ? 'DRAG DOWN' : 'LET GO');
+  }
+
+  function ghostKey(x, y, key, pressed, label) {
+    ctx.fillStyle = pressed ? 'rgba(255,209,102,0.95)' : 'rgba(255,255,255,0.85)';
+    roundRect(x - 22, y - 22 + (pressed ? 3 : 0), 44, 44, 8);
+    ctx.fill();
+    ctx.fillStyle = '#1b1b1b';
+    ctx.font = 'bold 20px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(key, x, y + 7 + (pressed ? 3 : 0));
+    if (label) {
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, x, y - 32);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  function ghostDesk(act, i, k) {
+    const colW = WORLD_W * scale, x = ox + colW * (i === LEFT ? 0.3 : 0.7), y = cssH * 0.78;
+    const key = i === LEFT ? 'A' : 'D';
+    if (act === 'hold') return ghostKey(x, y, key, true, 'HOLD');
+    if (act === 'tap') return ghostKey(x, y, key, k > 0.3 && k < 0.85, k > 0.3 ? 'PRESS & HOLD' : 'PRESS…');
+    if (act === 'lift') return ghostKey(x, y, key, k <= 0.5, k <= 0.5 ? 'HOLD…' : 'LET GO!');
+    // throw with the mouse: a cursor that drags down from the hand's side
+    const h = state.hands[i];
+    const cx0 = ox + h.x * scale + (i === LEFT ? -50 : 50), cy0 = cssH - (h.y - state.cam) * scale - 60;
+    const d = k < 0.15 ? 0 : k < 0.6 ? (k - 0.15) / 0.45 : 1;
+    const cy = cy0 + d * 110;
+    if (d > 0) {
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx0, cy0); ctx.lineTo(cx0, cy); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // cursor arrow
+    ctx.fillStyle = k > 0.1 && k < 0.65 ? '#ffd166' : '#fff';
+    ctx.strokeStyle = '#1b1b1b';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx0, cy); ctx.lineTo(cx0, cy + 22); ctx.lineTo(cx0 + 6, cy + 16); ctx.lineTo(cx0 + 11, cy + 26);
+    ctx.lineTo(cx0 + 15, cy + 24); ctx.lineTo(cx0 + 10, cy + 14); ctx.lineTo(cx0 + 17, cy + 14); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(k < 0.65 ? 'CLICK & DRAG DOWN' : 'LET GO', cx0, cy0 - 14);
+    ctx.textAlign = 'left';
+  }
+
   function drawTrainingOver(cx) {
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, cssW, cssH);
@@ -1202,6 +1323,8 @@
       thumb.canAim = atShoulder; // a quick flick from the shoulder can still turn this into a throw
     } else if (atShoulder) {
       thumb.mode = 'aim';
+    } else if (h.state === 'flying' && !hurt(i) && !autoGrab) {
+      hint('early'); // tapped before the hand reached a ledge
     }
     // Otherwise it's a missed grab: this thumb does nothing until lifted.
   }
@@ -1229,6 +1352,8 @@
       const h = state.hands[i], t = state.thumbs[i];
       return (h.state === 'idle' || h.state === 'returning') && (!t || t.mode === 'none');
     });
+    // Clicking to grab (a hand passing a ledge, or the opening drop): the keys do that.
+    if (state.phase === 'ready' || state.hands.some((h, k) => h.state !== 'held' && !hurt(k) && holdUnder(h))) hint('keys');
     if (!free.length) return;
     const bodyX = ox + state.body.x * scale;
     const i = free.length === 1 ? free[0] : e.clientX < bodyX ? LEFT : RIGHT;
@@ -1253,7 +1378,10 @@
     state.thumbs[i] = thumb;
     press(i, thumb);
     // Keys only grab and hold; throwing is the mouse's job.
-    if (thumb.mode === 'aim') thumb.mode = 'none';
+    if (thumb.mode === 'aim') {
+      thumb.mode = 'none';
+      if (!active('autoGrab') && !hurt(i)) hint('early'); // nothing to grab yet
+    }
     thumb.canAim = false;
   });
   window.addEventListener('keyup', (e) => {
@@ -1262,6 +1390,81 @@
     const t = state.thumbs[i];
     if (t && t.key) releaseThumb(i);
   });
+
+  // ---------- Beginner help ----------
+  // For a player's first few runs (and in training): a short hint when they
+  // make one of the common early mistakes, a glow on a hand that's touching a
+  // ledge (grab now!), and, with a mouse, A and D labels on the hands.
+  const BEGINNER_RUNS = 5;
+  const runsSoFar = () => Progress.stats().totalRuns + Progress.endlessRuns + Progress.sprintRuns;
+  const HINTS = {
+    early: () => (Controls.mouse ? 'Too early! Press when the hand touches a ledge' : 'Too early! Tap when the hand touches a ledge'),
+    hold: () => (Controls.mouse ? 'Keep holding the other key!' : 'Keep your other thumb down!'),
+    keys: () => 'Grab with A (left hand) or D (right hand)',
+  };
+  const HINT_SECS = 2.6;
+
+  function hint(kind) {
+    if (!state.beginner || state.phase === 'over') return;
+    const h = state.hints[kind] || (state.hints[kind] = { n: 0, at: -99 });
+    if (h.n >= 3 || state.time - h.at < 5) return; // not too often
+    h.n++;
+    h.at = state.time;
+    state.hint = { text: HINTS[kind](), at: state.time };
+  }
+
+  function drawHint() {
+    const t = state.hint;
+    if (!t || state.phase === 'over') return;
+    const age = state.time - t.at;
+    if (age > HINT_SECS) return;
+    ctx.globalAlpha = Math.min(1, age * 6, (HINT_SECS - age) * 2);
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    const maxW = Math.min(cssW - 24, WORLD_W * scale - 16);
+    let size = 15;
+    while (size > 11 && ctx.measureText(t.text).width + 32 > maxW) { size -= 0.5; ctx.font = `bold ${size}px system-ui, sans-serif`; }
+    const w = Math.min(maxW, ctx.measureText(t.text).width + 32), cx = ox + (WORLD_W * scale) / 2, y = cssH * 0.46;
+    ctx.fillStyle = '#ffd166';
+    roundRect(cx - w / 2, y - 21, w, 34, 17);
+    ctx.fill();
+    ctx.fillStyle = '#1b1b1b';
+    ctx.textAlign = 'center';
+    ctx.fillText(t.text, cx, y + 1);
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+  }
+
+  // A hand that can grab right now glows (world space).
+  function drawGrabGlow() {
+    if (!state.beginner || state.phase === 'over' || active('autoGrab')) return;
+    state.hands.forEach((h, i) => {
+      if (h.state === 'held' || hurt(i) || !holdUnder(h)) return;
+      const pulse = 0.5 + 0.5 * Math.sin(state.time * 14);
+      ctx.fillStyle = `rgba(125, 255, 176, ${0.25 + 0.2 * pulse})`;
+      ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R + 7 + pulse * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#7dffb0';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R + 4, 0, Math.PI * 2); ctx.stroke();
+    });
+  }
+
+  // With a mouse: which key grabs with which hand, right on the hands (screen space).
+  function drawKeyLabels() {
+    if (!Controls.mouse || state.phase === 'over' || !(state.beginner || state.phase === 'ready')) return;
+    state.hands.forEach((h, i) => {
+      const side = i === LEFT ? -1 : 1;
+      const sx = ox + h.x * scale + side * 20, sy = cssH - (h.y - state.cam) * scale - 18;
+      if (sy < -20 || sy > cssH + 20) return;
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      roundRect(sx - 10, sy - 10, 20, 20, 5);
+      ctx.fill();
+      ctx.fillStyle = '#1b1b1b';
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(i === LEFT ? 'A' : 'D', sx, sy + 5);
+      ctx.textAlign = 'left';
+    });
+  }
 
   function onMove(e) {
     const i = state.thumbs.findIndex(t => t && t.id === e.pointerId);
@@ -1295,6 +1498,8 @@
     state.thumbs[i] = null;
     if (state.phase === 'over') return;
     if (t.mode === 'grip') {
+      const other = state.hands[1 - i], ot = state.thumbs[1 - i];
+      if (state.phase === 'playing' && other.state !== 'held' && (other.state === 'flying' || (ot && ot.mode === 'aim'))) hint('hold');
       letGo(i);
     } else if (t.mode === 'aim' && canThrow) {
       const v = throwVelocity(t);
@@ -1835,6 +2040,7 @@
     drawAimArcs();
     drawClimber();
     drawAimRings();
+    drawGrabGlow();
     drawWater();
 
     screenTransform();
@@ -2304,6 +2510,9 @@
       ctx.textAlign = 'left';
     }
     if (learn()) drawCoach(top + 38);
+    drawKeyLabels();
+    drawHint();
+    if (learn()) drawGhost();
     drawEffects(learn() ? top + 38 + COACH_H + 6 : top + 60);
     if (!learn()) drawToast(); // in training, the callouts say what balloons do
 
