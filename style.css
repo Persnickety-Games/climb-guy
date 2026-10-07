@@ -177,6 +177,11 @@ canvas { display: block; }
   font-size: 16px; /* 16px stops iOS zooming in on focus */
   text-align: center;
 }
+/* After Endless or Sprint: go again in either. */
+#over-modes { flex-basis: 100%; display: flex; justify-content: center; gap: 10px; }
+#over-modes[hidden] { display: none; }
+#over-modes button { background: rgba(255, 255, 255, 0.2); color: #fff; padding: 11px 22px; font-size: 16px; }
+
 #name-input::placeholder { color: rgba(255, 255, 255, 0.55); }
 
 #customize-btn {

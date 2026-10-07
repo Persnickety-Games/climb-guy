@@ -2389,15 +2389,19 @@
       }
       const next = Progress.nextUnlock();
       if (next && daily()) lines.push([next.text, 'rgba(255,255,255,0.75)']);
+      // Below the buttons (Endless and Sprint have an extra row of them).
       let ly = y0 + 300;
+      if (!daily() && !overActions.hidden) ly = Math.max(ly, overActions.getBoundingClientRect().bottom + 24);
       for (const [text, color] of lines) {
         ctx.fillStyle = color;
         fitText(text, cx, ly, maxW, 14);
         ly += 20;
       }
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText(daily() ? `${tapWord()} to continue` : `${tapWord()} anywhere to climb again`, cx, ly + 14);
+      if (daily()) {
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.font = '15px system-ui, sans-serif';
+        ctx.fillText(`${tapWord()} to continue`, cx, ly + 14);
+      }
     }
     ctx.textAlign = 'left';
   }
@@ -2460,6 +2464,8 @@
   // ---------- Sharing ----------
   const overActions = document.getElementById('over-actions');
   const shareStatus = document.getElementById('share-status');
+  const overModes = document.getElementById('over-modes');
+  for (const b of overModes.querySelectorAll('[data-mode]')) b.addEventListener('click', () => playMode(b.dataset.mode));
 
   // Pick a random absurd unit that gives a fun-sized number, skipping the
   // last few this device has seen so it feels different every time.
@@ -2555,6 +2561,7 @@
     if (overActions.hidden === show) { // only touch the DOM when it changes
       overActions.hidden = !show;
       if (!show) shareStatus.textContent = '';
+      overModes.hidden = daily();
     }
   }
 
