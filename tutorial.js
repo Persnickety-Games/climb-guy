@@ -283,36 +283,43 @@ window.Tutorial = (() => {
     bg();
     const L1 = [95, 200], L2 = [205, 118];
     ledge(L1[0], L1[1], 100); ledge(L2[0], L2[1], 100);
-    // Phases (seconds): hang, aim 0.5-1.25, fly 1.25-1.55, the hand touches the
-    // ledge and glows 1.55-1.9, tap to catch at 1.9 (thumb, ring and grip all at
-    // once), both held, let go and swing 2.5-3.2, hang.
-    const CATCH = 1.9;
+    // Phases (seconds): hang; aim 0.5-1.25; throw 1.25-1.55, the hand arcs up
+    // to the ledge; 1.55 on it keeps drifting across the ledge, glowing (no
+    // grab yet: it isn't automatic); at 1.9 the thumb taps and in that same
+    // frame the hand stops, grips and the glow goes; both held; let go and
+    // swing up 2.5-3.2; hang.
+    const ARRIVE = 1.55, CATCH = 1.9;
     const aim = t >= 0.5 && t < 1.25, drag = at(0.5, 1.05);
-    const fly = Math.min(1, Math.max(0, (t - 1.25) / 0.3)), caught = t >= CATCH;
-    const touching = t >= 1.55 && !caught;
+    const fly = Math.min(1, Math.max(0, (t - 1.25) / (ARRIVE - 1.25))), caught = t >= CATCH;
+    const touching = t >= ARRIVE && !caught;
     const lifted = t >= 2.5, swing = at(2.5, 3.2);
-    const bx = lerp(112, 196, swing), by = lerp(250, 166, swing) + Math.sin(t * 2) * 1.5;
+    // Across the ledge: slowing as it goes, like a throw near the top of its arc.
+    const drift = (u) => L2[0] - 38 + 76 * (1 - (1 - Math.min(1, u)) ** 2);
+    const entry = [drift(0), L2[1]];
+    const grip = [drift((CATCH - ARRIVE) / 0.6), L2[1]];
+    const bx = lerp(112, grip[0] - 9, swing), by = lerp(250, 166, swing) + Math.sin(t * 2) * 1.5;
     const rs = [bx + 13, by - 5];
     let r = null;
     if (aim) r = [rs[0] + 4 * drag, rs[1] + 14 * drag];
-    else if (t >= 1.25 && !caught) r = [lerp(rs[0], L2[0], fly), lerp(rs[1], L2[1], fly) - Math.sin(fly * Math.PI) * 40];
-    else if (caught) r = [L2[0], L2[1]];
-    if (aim && drag > 0.1) dotsArc(rs, L2, 40, 'rgba(255,209,102,0.95)', 0.2 + 0.8 * drag);
+    else if (t >= 1.25 && t < ARRIVE) r = [lerp(rs[0], entry[0], fly), lerp(rs[1], entry[1], fly) - Math.sin(fly * Math.PI) * 40];
+    else if (touching) r = [drift((t - ARRIVE) / 0.6), L2[1]];
+    else if (caught) r = grip;
+    if (aim && drag > 0.1) dotsArc(rs, entry, 40, 'rgba(255,209,102,0.95)', 0.2 + 0.8 * drag);
     const swinging = swing > 0.05 && swing < 0.95;
     climber(bx, by, lifted ? null : [L1[0] + 5, L1[1]], r, !lifted, caught, swinging ? 'wow' : 'smile');
     if (swinging) {
       ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
       for (const dx of [-10, 0, 10]) { ctx.beginPath(); ctx.moveTo(bx + dx, by + 24); ctx.lineTo(bx + dx, by + 44); ctx.stroke(); }
     }
-    if (touching) { // the grab glow, as in the game
+    if (touching) { // the grab glow, as in the game, moving with the hand
       const pulse = 0.5 + 0.5 * Math.sin(t * 14);
       ctx.fillStyle = `rgba(125, 255, 176, ${0.25 + 0.2 * pulse})`;
-      ctx.beginPath(); ctx.arc(L2[0], L2[1], 16 + pulse * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(r[0], r[1], 16 + pulse * 3, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(L2[0], L2[1], 13, 0, Math.PI * 2); ctx.stroke();
-      hand(L2[0], L2[1], YELLOW, false); // the hand on top of its glow
+      ctx.beginPath(); ctx.arc(r[0], r[1], 13, 0, Math.PI * 2); ctx.stroke();
+      hand(r[0], r[1], YELLOW, false); // the hand on top of its glow
     }
-    if (caught) tapRing(L2[0], L2[1], (t - CATCH) / 0.3);
+    if (caught) tapRing(grip[0], grip[1], (t - CATCH) / 0.3);
     // The player's side: two thumbs (or mouse and keys) along the bottom.
     ctx.fillStyle = 'rgba(10,25,40,0.25)'; ctx.fillRect(0, 290, W, H - 290);
     const ly = 335, lx = 75, rx = 225;
