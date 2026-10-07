@@ -131,12 +131,13 @@
   const URL_MODE = new URLSearchParams(location.search).get('mode');
   // Brand-new players (no runs yet, haven't finished or skipped training) start
   // in training, unless a link asks for Endless or Sprint.
-  let mode = ['sprint', 'endless', 'learn'].includes(URL_MODE) ? URL_MODE : Tutorial.shouldShow ? 'learn' : 'daily';
+  let mode = ['sprint', 'endless', 'learn', 'hook'].includes(URL_MODE) ? URL_MODE : Tutorial.shouldShow ? 'learn' : 'daily';
   const sprint = () => mode === 'sprint';
   const daily = () => mode === 'daily';
   const learn = () => mode === 'learn';
-  const modeBest = () => (learn() ? 0 : sprint() ? Progress.sprintBest : daily() ? Progress.best : Progress.endlessBest);
-  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ', learn: '' };
+  const hook = () => mode === 'hook'; // PROTOTYPE (unlisted, ?mode=hook): see "Hook mode" below
+  const modeBest = () => (learn() ? 0 : hook() ? store.get('cg.hookBest', 0) : sprint() ? Progress.sprintBest : daily() ? Progress.best : Progress.endlessBest);
+  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ', learn: '', hook: 'Hook ' };
   // The main badges, stats and landmarks come only from the daily.
   const mainAward = (id) => (daily() ? Progress.award(id) : null);
   let day = Daily.today();         // the daily being played; refreshed at each new game
@@ -220,7 +221,8 @@
     };
     if (daily() || learn()) initFeatures(); // fixed from the ground up, so it's the same for everyone
     if (learn()) startTraining(startHold);
-    state.beginner = learn() || runsSoFar() < BEGINNER_RUNS;
+    state.beginner = !hook() && (learn() || runsSoFar() < BEGINNER_RUNS);
+    if (hook()) state.hookFrom = state.body.y - viewH / 3; // hooks catch only after falling a third of the screen
     state.hints = {};
     placeIdle(LEFT);
     placeIdle(RIGHT);
@@ -1009,7 +1011,7 @@
   }
 
   function pickPower(allowed) {
-    const pool = Object.keys(POWERS).filter(allowed);
+    const pool = Object.keys(POWERS).filter(k => allowed(k) && !(hook() && k === 'autoGrab')); // hooks already catch by themselves
     let r = R.balloons.r(0, pool.reduce((sum, k) => sum + POWERS[k].weight, 0));
     return pool.find(k => (r -= POWERS[k].weight) < 0) || pool[0];
   }
@@ -1175,6 +1177,7 @@
   // otherwise get ready to throw it.
   function press(i, thumb) {
     const h = state.hands[i];
+    if (hook()) { if (h.state !== 'flying') thumb.mode = 'aim'; return; } // no grabbing: every drag throws
     const autoGrab = active('autoGrab');
     if (h.state === 'held' && h.autoHeld) {
       // During Auto-grab a holding hand can't be let go of. Afterwards, a thumb
@@ -1229,10 +1232,11 @@
     if (e.button !== 0) return;
     // A mouse thumb we still think is down lost its "released" event.
     state.thumbs.forEach((t, i) => t && t.mouse && releaseThumb(i));
-    const free = [LEFT, RIGHT].filter(i => {
+    let free = [LEFT, RIGHT].filter(i => {
       const h = state.hands[i], t = state.thumbs[i];
       return (h.state === 'idle' || h.state === 'returning') && (!t || t.mode === 'none');
     });
+    if (hook() && !free.length) free = [LEFT, RIGHT].filter(i => state.hands[i].state === 'held' && !state.thumbs[i]);
     // Clicking to grab (a hand passing a ledge, or the opening drop): the keys do that.
     if (state.phase === 'ready' || state.hands.some((h, k) => h.state !== 'held' && !hurt(k) && holdUnder(h))) hint('keys');
     if (!free.length) return;
@@ -1251,7 +1255,7 @@
     if (e.repeat) return;
     setMouse(true);
     if (!started || !tunePanel.hidden || Menu.isOpen() || Feedback.isOpen() || Tutorial.isOpen()) return;
-    if (state.phase === 'over' || state.rocket) return;
+    if (state.phase === 'over' || state.rocket || hook()) return;
     const old = state.thumbs[i];
     if (old && old.mouse && old.mode === 'aim') return; // that hand is being thrown
     if (old) releaseThumb(i);
@@ -1271,6 +1275,46 @@
     const t = state.thumbs[i];
     if (t && t.key) releaseThumb(i);
   });
+
+  // ---------- Hook mode (PROTOTYPE, unlisted: ?mode=hook) ----------
+  // Hands are hooks: no grabbing. A thrown hook bounces off a ledge it hits
+  // from below or the side, and catches by itself when it comes down onto the
+  // top of one. When a hook catches higher than the other hand's ledge, the
+  // other hand lets go, so the climber swings up on its own. Drag any hand,
+  // hooked or not, to throw it. A falling climber with nothing held hooks on
+  // with a hand at the shoulder too, so a miss isn't the end. The opening drop always falls a third of the screen before a hook
+  // can catch, and the ledges under the drop make sure one does.
+  // h: the hand; py: its height before this step. `sim` is a copy used to
+  // draw the aim arc (bounces and all) without catching anything.
+  function hookCollide(i, h, py, sim = false) {
+    if (!sim && !state.hookArmed) { // the opening drop: not until it has fallen a third of the screen
+      if (state.body.y > state.hookFrom) return null;
+      state.hookArmed = true;
+    }
+    if (!sim && hurt(i)) return null;
+    const r = HAND_R;
+    for (const o of state.holds) {
+      if (o.ghost || o.broken) continue; // ghost ledges: hooks fall straight through
+      const top = o.y + o.h / 2, bottom = o.y - o.h / 2;
+      if (Math.abs(h.x - o.x) > o.w / 2 + r * 0.5 || h.y - r > top || h.y + r < bottom) continue;
+      if (py - r >= top - 1 && h.y <= py) { // coming down onto the top: hook on
+        if (sim) return o;
+        h.y = top;
+        grab(i, o);
+        return o;
+      }
+      if (h.state !== 'flying') continue; // a hand at the shoulder passes up through ledges
+      if (py + r <= bottom + 1 && h.vy > 0) { // from below: bounce off the underside
+        h.y = bottom - r;
+        h.vy = -Math.abs(h.vy) * 0.35;
+      } else { // the side: bounce away
+        const side = Math.sign(h.x - o.x) || 1;
+        h.x = o.x + side * (o.w / 2 + r);
+        h.vx = side * Math.abs(h.vx) * 0.5;
+      }
+    }
+    return null;
+  }
 
   // ---------- Beginner help ----------
   // For a player's first few runs (and in training): a short hint when they
@@ -1319,7 +1363,7 @@
   // A hand that can grab right now glows, for everyone (world space). Not a
   // hurt hand (Ouch!!) or during Auto-grab, and ghost ledges don't count.
   function drawGrabGlow() {
-    if (state.phase === 'over' || active('autoGrab')) return;
+    if (state.phase === 'over' || active('autoGrab') || hook()) return;
     state.hands.forEach((h, i) => {
       if (h.state === 'held' || hurt(i) || !holdUnder(h)) return;
       const pulse = 0.5 + 0.5 * Math.sin(state.time * 14);
@@ -1434,7 +1478,7 @@
     // lets go when the other hand grabs.
     h.autoHeld = auto || active('autoGrab');
     const j = 1 - i, other = state.hands[j];
-    if (other.state === 'held' && (other.autoHeld || h.autoHeld)) {
+    if (other.state === 'held' && (other.autoHeld || h.autoHeld || (hook() && hold.y > other.hold.y))) {
       letGo(j);
       if (state.thumbs[j]) { state.thumbs[j].mode = 'none'; state.thumbs[j].canAim = false; }
     }
@@ -1455,6 +1499,7 @@
 
   function throwHand(i, v) {
     const h = state.hands[i];
+    if (hook() && h.state === 'held') letGo(i); // unhook and throw in one move
     if (h.state !== 'idle' && h.state !== 'returning') return;
     const s = shoulder(i);
     Object.assign(h, { state: 'flying', x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y });
@@ -1557,8 +1602,13 @@
     // Hands.
     hands.forEach((h, i) => {
       const s = shoulder(i);
+      const py = h.y;
       if (h.state === 'flying') {
         advanceHand(h, s, dt);
+        if (hook()) { // the flight ends the same way: back below where it was thrown from
+          if (!hookCollide(i, h, py) && h.state === 'flying' && handFlightOver(h)) h.state = 'returning';
+          return;
+        }
         const target = h.autoTarget;
         const o = target && !hurt(i) && holdUnder(h);
         if (o && (o === target.hold || h.t >= target.t)) {
@@ -1572,6 +1622,8 @@
         if (Math.hypot(s.x - h.x, s.y - h.y) < 4) h.state = 'idle';
       }
       if (h.state === 'idle') placeIdle(i);
+      // A falling climber (nothing held) hooks on with a hand at the shoulder too.
+      if (hook() && h.state !== 'held' && h.state !== 'flying' && !hands.some(o => o.state === 'held')) hookCollide(i, h, py);
     });
 
     if (state.phase === 'playing') {
@@ -1629,7 +1681,11 @@
     state.unit = pickUnit(heightMeters());
     const m = heightMeters();
     state.timeUp = sprint() && climbing && state.water < state.body.y;
-    if ((TUNING && !daily()) || learn()) {
+    if (hook()) { // prototype: its own best, nothing else counts
+      const best = store.get('cg.hookBest', 0);
+      if (m > best) store.set('cg.hookBest', m);
+      state.result = { isBest: m > best, newBadges: [], newUnlocks: [] };
+    } else if ((TUNING && !daily()) || learn()) {
       state.result = { isBest: false, newBadges: [], newUnlocks: [] }; // tuned runs and training don't count
     } else if (sprint()) {
       state.result = Progress.recordSprint({ m, unlockedBefore: state.unlockedBefore });
@@ -2051,12 +2107,23 @@
       const h = { x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y };
       ctx.fillStyle = arcColor(i);
       ctx.globalAlpha = 0.8;
+      let caught = null;
+      h.state = 'flying';
       for (let n = 0; n < 600 && !handFlightOver(h); n++) {
+        const py = h.y;
         advanceHand(h, s, DT);
+        // Hook mode: the arc bounces like the hook will, and ends where it catches.
+        if (hook() && (caught = hookCollide(i, h, py, true))) break;
         if (n % 7) continue;
         ctx.beginPath(); ctx.arc(h.x, h.y, 2.8, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
+      if (caught) {
+        const top = caught.y + caught.h / 2;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(h.x, top, HAND_R + 3, 0, Math.PI * 2); ctx.stroke();
+      }
       const target = active('autoGrab') && autoGrabTarget(i, v);
       if (target) {
         const o = target.hold;
@@ -2490,10 +2557,10 @@
         fitText(text, cx, ly, maxW, 14);
         ly += 20;
       }
-      if (daily()) {
+      if (daily() || hook()) {
         ctx.fillStyle = 'rgba(255,255,255,0.8)';
         ctx.font = '15px system-ui, sans-serif';
-        ctx.fillText(`${tapWord()} to continue`, cx, ly + 14);
+        ctx.fillText(daily() ? `${tapWord()} to continue` : `${tapWord()} anywhere to climb again`, cx, ly + 14);
       }
     }
     ctx.textAlign = 'left';
@@ -2650,7 +2717,7 @@
       document.getElementById('learn-skip').textContent = state.trainingDone ? "Play today's daily ›" : 'Skip to the daily ›';
       document.getElementById('learn-skip').className = state.trainingDone ? '' : 'learn-secondary';
     }
-    const show = started && state.phase === 'over' && !state.missed && !learn() && tunePanel.hidden && !Menu.isOpen();
+    const show = started && state.phase === 'over' && !state.missed && !learn() && !hook() && tunePanel.hidden && !Menu.isOpen();
     if (overActions.hidden === show) { // only touch the DOM when it changes
       overActions.hidden = !show;
       if (!show) shareStatus.textContent = '';
@@ -2761,7 +2828,7 @@
         if (!doneTimer) doneTimer = setInterval(tick, 1000);
       }
     } else {
-      $('start-day').textContent = learn() ? '🎓 Training' : sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
+      $('start-day').textContent = learn() ? '🎓 Training' : hook() ? '🪝 Hook (prototype)' : sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
       $('start-line').textContent = learn() ? "Learn the moves one at a time,\nthen climb to the finish." : c ? `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`
         : modeBest() > 0 ? `Your best: ${modeBest()} m` : '';
     }
@@ -2833,7 +2900,19 @@
   ].join(' · ');
 
   // Read-only handle for debugging in the browser console.
-  window.climber = { get state() { return state; }, get mode() { return mode; }, T, power: (kind, hand = 0) => applyPower(kind, hand), shareText: () => shareText() };
+  // Hook mode: where would a throw with velocity v from hand i catch? (for testing)
+  function predictHook(i, v) {
+    const s = shoulder(i), h = { state: 'flying', x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y };
+    for (let n = 0; n < 600 && !handFlightOver(h); n++) {
+      const py = h.y;
+      advanceHand(h, s, DT);
+      const o = hookCollide(i, h, py, true);
+      if (o) return o;
+    }
+    return null;
+  }
+
+  window.climber = { predictHook, get state() { return state; }, get mode() { return mode; }, T, power: (kind, hand = 0) => applyPower(kind, hand), shareText: () => shareText() };
 
   newGame();
   renderStart();
