@@ -21,6 +21,9 @@
     // Load the game files with a version stamp so phones never keep running an
     // old cached copy after an update (at most a minute old).
     window.CLIMBER_V = Math.floor(Date.now() / 60000);
+    // Mouse and keyboard, or touch? A first guess from the device; the game
+    // switches as soon as someone clicks, touches or presses a grab key.
+    window.Controls = { mouse: matchMedia('(hover: hover) and (pointer: fine)').matches };
     document.write('<link rel="stylesheet" href="style.css?v=' + window.CLIMBER_V + '">');
   </script>
 </head>

@@ -14,9 +14,12 @@ window.Tutorial = (() => {
   const PINK = '#ff5fa2', YELLOW = '#ffd166', BODY = '#e8873a', LEDGE = '#6b5440', WATER = '#3a7bd5';
 
   const SLIDES = [
-    { title: 'Two thumbs, two hands', text: 'The left side of the screen controls the left hand. The right side controls the right.', draw: drawSides },
-    { title: 'Drag down to throw', text: "Pull a thumb down and let go to fling that hand up, like a slingshot. The dotted arc shows where it'll go.", draw: drawThrow },
-    { title: 'Tap to grab, hold to hang on', text: "Tap when the hand reaches a ledge, and keep your thumb down to hold on. Lift it to let go. You start by falling in, so grab a ledge quick!", draw: drawGrab },
+    { title: 'Two thumbs, two hands', text: 'The left side of the screen controls the left hand. The right side controls the right.', draw: drawSides,
+      mouse: { title: 'Mouse throws, keys grab', text: 'Drag with the mouse to throw a hand. A grabs with the left hand, D with the right.' } },
+    { title: 'Drag down to throw', text: "Pull a thumb down and let go to fling that hand up, like a slingshot. The dotted arc shows where it'll go.", draw: drawThrow,
+      mouse: { title: 'Drag down to throw', text: "Click, drag down and let go to fling a hand up, like a slingshot. The dotted arc shows where it'll go." } },
+    { title: 'Tap to grab, hold to hang on', text: "Tap when the hand reaches a ledge, and keep your thumb down to hold on. Lift it to let go. You start by falling in, so grab a ledge quick!", draw: drawGrab,
+      mouse: { title: 'Press to grab, hold to hang on', text: 'Press A or D when that hand reaches a ledge, and keep holding the key. Let go of it to let go. You start by falling in, so grab a ledge quick!' } },
     { title: 'Let go to fling up', text: "Arms are stretchy. Hang from a high hand, let go with the lower one, and you'll zoom up. Keep swapping hands.", draw: drawFling },
     { title: 'Outclimb the water', text: "The water keeps rising. Green balloons help; red ones don't. There's one daily climb a day, the same for everyone. How high can you get?", draw: drawWater },
   ];
@@ -59,7 +62,9 @@ window.Tutorial = (() => {
     body(x, y, face);
     hand(L[0], L[1], PINK, lHeld); hand(R[0], R[1], YELLOW, rHeld);
   }
-  // A thumb on the glass: a soft circle, pressed (filled) or just a ring.
+  const mouse = () => !!(window.Controls && Controls.mouse);
+
+  // A thumb on the glass (or a key): a soft circle, pressed (filled) or just a ring.
   function thumb(x, y, pressed, label) {
     ctx.fillStyle = pressed ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.15)';
     ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2;
@@ -95,8 +100,8 @@ window.Tutorial = (() => {
     const sway = Math.sin(time * 2) * 3;
     climber(W / 2 + sway, 92, [W / 2 - 22, 40], [W / 2 + 22, 40], true, true);
     const pulse = (Math.sin(time * 4) + 1) / 2;
-    thumb(W / 4, 150, pulse > 0.5, 'LEFT HAND');
-    thumb((W * 3) / 4, 150, pulse <= 0.5, 'RIGHT HAND');
+    thumb(W / 4, 150, pulse > 0.5, mouse() ? 'A = LEFT' : 'LEFT HAND');
+    thumb((W * 3) / 4, 150, pulse <= 0.5, mouse() ? 'D = RIGHT' : 'RIGHT HAND');
   }
 
   function drawThrow(time) {
@@ -131,7 +136,7 @@ window.Tutorial = (() => {
     const r = held ? top : [lerp(start[0], top[0], rise), lerp(start[1], top[1], rise) - Math.sin(rise * Math.PI) * 30];
     climber(bx, by, null, r, false, held);
     tapRing(top[0], top[1], (k - 0.42) / 0.25);
-    thumb(235, 145, held, held ? 'TAP & HOLD' : 'TAP…');
+    thumb(235, 145, held, mouse() ? (held ? 'HOLD D' : 'PRESS D…') : held ? 'TAP & HOLD' : 'TAP…');
   }
 
   function drawFling(time) {
@@ -148,7 +153,7 @@ window.Tutorial = (() => {
       ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
       for (const dx of [-10, 0, 10]) { ctx.beginPath(); ctx.moveTo(bx + dx, by + 24); ctx.lineTo(bx + dx, by + 44); ctx.stroke(); }
     }
-    thumb(235, 150, lowHeld, lowHeld ? 'HOLDING…' : 'LIFT!');
+    thumb(235, 150, lowHeld, lowHeld ? 'HOLDING…' : mouse() ? 'LET GO!' : 'LIFT!');
   }
 
   function drawWater(time) {
@@ -168,8 +173,9 @@ window.Tutorial = (() => {
   // ---------- Showing it ----------
   function render() {
     const s = SLIDES[slide];
-    $('.tut-title').textContent = s.title;
-    $('.tut-text').textContent = s.text;
+    const words = (window.Controls && Controls.mouse && s.mouse) || s;
+    $('.tut-title').textContent = words.title;
+    $('.tut-text').textContent = words.text;
     $('.tut-step').textContent = `${slide + 1} / ${SLIDES.length}`;
     $('.tut-back').hidden = slide === 0;
     const last = slide === SLIDES.length - 1;

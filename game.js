@@ -587,11 +587,13 @@
   let skillsDone = false;       // after the skills part, a splash restarts at the climb
 
   const COACH = [
-    { text: 'Drag a thumb DOWN, then let go', sub: 'That hand flies up. Left side = left hand.',
+    { text: () => (Controls.mouse ? 'Click and drag DOWN, then let go' : 'Drag a thumb DOWN, then let go'),
+      sub: () => (Controls.mouse ? 'A hand flies up, like a slingshot.' : 'That hand flies up. Left side = left hand.'),
       done: t => t.thrown },
-    { text: 'Tap when a hand touches a ledge', sub: 'Keep your thumb down to hang on.',
+    { text: () => (Controls.mouse ? 'Press A or D when a hand touches a ledge' : 'Tap when a hand touches a ledge'),
+      sub: () => (Controls.mouse ? 'A = left hand, D = right. Hold the key to hang on.' : 'Keep your thumb down to hang on.'),
       done: t => t.settled },
-    { text: 'Throw your other hand up and grab', sub: 'Keep the first thumb pressed down!',
+    { text: 'Throw your other hand up and grab', sub: () => (Controls.mouse ? 'Keep holding the first key!' : 'Keep the first thumb pressed down!'),
       done: t => t.both >= 0.3 },
     { text: 'Let go of your LOWER hand', sub: "You'll swing up. Then grab again.",
       start: t => { t.swingsAt = t.swings; },
@@ -1147,6 +1149,8 @@
       return;
     }
     if (state.rocket) return;
+    if (e.pointerType === 'mouse') { mouseDown(e); return; }
+    setMouse(false);
     // A first finger down means no other finger is touching, so any thumb we
     // still think is down lost its "lifted" event (iPhones sometimes drop it).
     if (e.isPrimary) releaseAllThumbs();
@@ -1160,7 +1164,12 @@
     try { canvas.setPointerCapture(e.pointerId); } catch {}
     const thumb = { id: e.pointerId, mode: 'none', canAim: false, downAt: performance.now(), sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY };
     state.thumbs[i] = thumb;
+    press(i, thumb);
+  }
 
+  // A thumb (or a grab key) goes down for hand i: grab if it's over a ledge,
+  // otherwise get ready to throw it.
+  function press(i, thumb) {
     const h = state.hands[i];
     const autoGrab = active('autoGrab');
     if (h.state === 'held' && h.autoHeld) {
@@ -1194,6 +1203,63 @@
     }
     // Otherwise it's a missed grab: this thumb does nothing until lifted.
   }
+
+  // ---------- Mouse and keyboard ----------
+  // The mouse throws: drag and let go, like a thumb. With only one hand free,
+  // that's the one; with both free, the one on the side of the climber you
+  // clicked. Two keys grab and hold, the left one for the left hand: A and D,
+  // or the left and right arrows. Hold the key to hang on, let go of it to let go.
+  const tapWord = () => (Controls.mouse ? 'Click' : 'Tap');
+  const KEYS = { KeyA: LEFT, KeyD: RIGHT, ArrowLeft: LEFT, ArrowRight: RIGHT };
+
+  function setMouse(on) {
+    if (Controls.mouse === on) return;
+    Controls.mouse = on;
+    if (!started) renderStart();
+  }
+
+  function mouseDown(e) {
+    setMouse(true);
+    if (e.button !== 0) return;
+    // A mouse thumb we still think is down lost its "released" event.
+    state.thumbs.forEach((t, i) => t && t.mouse && releaseThumb(i));
+    const free = [LEFT, RIGHT].filter(i => {
+      const h = state.hands[i], t = state.thumbs[i];
+      return (h.state === 'idle' || h.state === 'returning') && (!t || t.mode === 'none');
+    });
+    if (!free.length) return;
+    const bodyX = ox + state.body.x * scale;
+    const i = free.length === 1 ? free[0] : e.clientX < bodyX ? LEFT : RIGHT;
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+    state.thumbs[i] = { id: e.pointerId, mouse: true, mode: 'aim', canAim: false, downAt: performance.now(), sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY };
+  }
+
+  const typing = (e) => e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+
+  window.addEventListener('keydown', (e) => {
+    const i = KEYS[e.code];
+    if (i === undefined || typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault(); // arrows would scroll
+    if (e.repeat) return;
+    setMouse(true);
+    if (!started || !tunePanel.hidden || Menu.isOpen() || Feedback.isOpen() || Tutorial.isOpen()) return;
+    if (state.phase === 'over' || state.rocket) return;
+    const old = state.thumbs[i];
+    if (old && old.mouse && old.mode === 'aim') return; // that hand is being thrown
+    if (old) releaseThumb(i);
+    const thumb = { id: `key${i}`, key: true, mode: 'none', canAim: false, downAt: performance.now() };
+    state.thumbs[i] = thumb;
+    press(i, thumb);
+    // Keys only grab and hold; throwing is the mouse's job.
+    if (thumb.mode === 'aim') thumb.mode = 'none';
+    thumb.canAim = false;
+  });
+  window.addEventListener('keyup', (e) => {
+    const i = KEYS[e.code];
+    if (i === undefined || !state) return;
+    const t = state.thumbs[i];
+    if (t && t.key) releaseThumb(i);
+  });
 
   function onMove(e) {
     const i = state.thumbs.findIndex(t => t && t.id === e.pointerId);
@@ -1745,12 +1811,14 @@
       ctx.fillText(`${Math.round((y - base) / UNITS_PER_METER)} m`, ox + 6, sy - 4);
     }
 
-    // Faint divider between the two thumb zones.
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-    ctx.lineWidth = 3;
-    ctx.setLineDash([8, 10]);
-    ctx.beginPath(); ctx.moveTo(cssW / 2, 0); ctx.lineTo(cssW / 2, cssH); ctx.stroke();
-    ctx.setLineDash([]);
+    // Faint divider between the two thumb zones (touch only).
+    if (!Controls.mouse) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 10]);
+      ctx.beginPath(); ctx.moveTo(cssW / 2, 0); ctx.lineTo(cssW / 2, cssH); ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     worldTransform();
 
@@ -1764,6 +1832,7 @@
     drawBirds();
     drawAimArcs();
     drawClimber();
+    drawAimRings();
     drawWater();
 
     screenTransform();
@@ -1905,6 +1974,20 @@
         roundRect(o.x - o.w / 2 - 3, o.y - o.h / 2 - 3, o.w + 6, o.h + 6, 6);
         ctx.stroke();
       }
+    });
+  }
+
+  // A thin ring around the hand that's about to be thrown.
+  function drawAimRings() {
+    if (state.phase === 'over') return;
+    state.thumbs.forEach((t, i) => {
+      if (!t || t.mode !== 'aim') return;
+      const h = state.hands[i];
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.arc(h.x, h.y, HAND_R + 3.5, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
     });
   }
 
@@ -2126,7 +2209,8 @@
   // Show where each thumb is and what it's doing.
   function drawThumbs() {
     state.thumbs.forEach((t, i) => {
-      if (!t) return;
+      if (!t || t.key) return;
+      if (t.mouse && t.mode !== 'aim') return;
       ctx.strokeStyle = handColor(i);
       ctx.fillStyle = handColor(i);
       if (t.mode === 'aim') {
@@ -2227,16 +2311,19 @@
       drawTrainingOver(cx);
     } else if (state.phase === 'ready' && !learn()) {
       const by = cssH * 0.86;
+      // Touch: each half of the screen. Mouse: each half of the game column.
+      const zx = Controls.mouse ? ox : 0, zw = Controls.mouse ? WORLD_W * scale : cssW;
       [LEFT, RIGHT].forEach((i) => {
-        const hx = i === LEFT ? cssW * 0.25 : cssW * 0.75;
+        const hx = zx + zw * (i === LEFT ? 0.25 : 0.75);
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        roundRect(hx - cssW * 0.23, by, cssW * 0.46, 64, 12);
+        roundRect(hx - zw * 0.23, by, zw * 0.46, 64, 12);
         ctx.fill();
         // White text with a hand-colored dot, so dark hand colors stay readable.
+        const label = Controls.mouse ? `${i === LEFT ? 'A' : 'D'} to grab` : 'TAP to grab';
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 15px system-ui, sans-serif';
-        ctx.fillText('TAP to grab', hx + 9, by + 26);
-        const tw = ctx.measureText('TAP to grab').width;
+        ctx.fillText(label, hx + 9, by + 26);
+        const tw = ctx.measureText(label).width;
         ctx.beginPath(); ctx.arc(hx + 9 - tw / 2 - 12, by + 21, 6, 0, Math.PI * 2);
         ctx.fillStyle = handColor(i); ctx.fill();
         ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();
@@ -2253,12 +2340,12 @@
       ctx.font = 'bold 32px system-ui, sans-serif';
       ctx.fillText('Missed the catch!', cx, y0);
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      fitText('Tap as a hand passes a ledge on the way in.', cx, y0 + 40, maxW, 16);
+      fitText(Controls.mouse ? 'Press A or D as a hand passes a ledge on the way in.' : 'Tap as a hand passes a ledge on the way in.', cx, y0 + 40, maxW, 16);
       ctx.fillStyle = '#7dffb0';
       fitText(daily() ? "No worries, this one doesn't count toward today's daily." : "No worries, this one doesn't count.", cx, y0 + 68, maxW, 15);
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText('Tap anywhere to try again', cx, y0 + 120);
+      ctx.fillText(`${tapWord()} anywhere to try again`, cx, y0 + 120);
     } else if (state.phase === 'over') {
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0, 0, cssW, cssH);
@@ -2310,7 +2397,7 @@
       }
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.font = '15px system-ui, sans-serif';
-      ctx.fillText(daily() ? 'Tap to continue' : 'Tap anywhere to climb again', cx, ly + 14);
+      ctx.fillText(daily() ? `${tapWord()} to continue` : `${tapWord()} anywhere to climb again`, cx, ly + 14);
     }
     ctx.textAlign = 'left';
   }
@@ -2580,6 +2667,7 @@
     }
     if (!result && doneTimer) { clearInterval(doneTimer); doneTimer = null; }
     $('start-skip').hidden = !learn();
+    $('start-tap').textContent = `${tapWord()} anywhere to start`;
   }
 
   function showStart() {
@@ -2638,7 +2726,7 @@
     `mode ${mode}`, `daily #${Daily.today().n}${Progress.dailyResult(Daily.today().key) ? ' (played)' : ''}`,
     `best ${Progress.best} m`, `dailies ${Progress.stats().totalRuns}`,
     `endless best ${Progress.endlessBest} m`, `sprint best ${Progress.sprintBest} m`,
-    `screen ${innerWidth}x${innerHeight}@${devicePixelRatio}`, navigator.userAgent,
+    `screen ${innerWidth}x${innerHeight}@${devicePixelRatio}`, Controls.mouse ? 'mouse+keys' : 'touch', navigator.userAgent,
   ].join(' · ');
 
   // Read-only handle for debugging in the browser console.
