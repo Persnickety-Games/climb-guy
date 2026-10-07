@@ -251,7 +251,7 @@ window.Tutorial = (() => {
   const intro = document.getElementById('intro');
   const introArt = intro.querySelector('.intro-art');
   const introGo = intro.querySelector('.intro-go');
-  const IW = 300, IH = 380, LOOP = 5.2;
+  const IW = 300, IH = 380, LOOP = 5.0;
   let introRaf = 0, introT0 = 0, introDone = null;
 
   function key(x, y, label, pressed, color) {
@@ -279,14 +279,15 @@ window.Tutorial = (() => {
 
   // The thrown hand flies like a real throw: up through the ledge (glowing while
   // it touches), a little above it (no glow), back down onto it (glowing
-  // again), and the tap freezes it there. Slowed down from the game's speed.
+  // again), and the tap freezes it there. A bit slower than the game.
   const SHOULDER0 = [125, 245];            // right shoulder when the throw starts
-  const VX = 95, VY = 367, G = 459;        // px/s, px/s up, px/s^2 down
+  const SPEED = 1.25;                      // same path, played 25% faster (about 75% of game speed)
+  const VX = 95 * SPEED, VY = 367 * SPEED, G = 459 * SPEED * SPEED; // px/s, px/s up, px/s^2 down
   const L2 = [205, 118], L2W = 100;
   const flightAt = (s) => [SHOULDER0[0] + VX * s, SHOULDER0[1] - VY * s + 0.5 * G * s * s];
   // Touching works like the game: the hand's circle (radius 9) overlaps the ledge (12 tall).
   const onLedge = (p) => Math.abs(p[1] - L2[1]) <= 6 + 9 && p[0] >= L2[0] - L2W / 2 - 9 && p[0] <= L2[0] + L2W / 2 + 9;
-  const THROW = 1.25, CATCH_S = 1.07, CATCH = THROW + CATCH_S, LIFT = CATCH + 0.6;
+  const THROW = 1.25, CATCH_S = 1.07 / SPEED, CATCH = THROW + CATCH_S, LIFT = CATCH + 0.6;
 
   function drawIntro(time) {
     const t = time % LOOP;
