@@ -251,7 +251,7 @@ window.Tutorial = (() => {
   const intro = document.getElementById('intro');
   const introArt = intro.querySelector('.intro-art');
   const introGo = intro.querySelector('.intro-go');
-  const IW = 300, IH = 380, LOOP = 4.6;
+  const IW = 300, IH = 380, LOOP = 5.2;
   let introRaf = 0, introT0 = 0, introDone = null;
 
   function key(x, y, label, pressed, color) {
@@ -277,34 +277,42 @@ window.Tutorial = (() => {
     ctx.fill(); ctx.stroke();
   }
 
+  // The thrown hand flies like a real throw: up through the ledge (glowing while
+  // it touches), a little above it (no glow), back down onto it (glowing
+  // again), and the tap freezes it there. Slowed down from the game's speed.
+  const SHOULDER0 = [125, 245];            // right shoulder when the throw starts
+  const VX = 95, VY = 367, G = 459;        // px/s, px/s up, px/s^2 down
+  const L2 = [205, 118], L2W = 100;
+  const flightAt = (s) => [SHOULDER0[0] + VX * s, SHOULDER0[1] - VY * s + 0.5 * G * s * s];
+  // Touching works like the game: the hand's circle (radius 9) overlaps the ledge (12 tall).
+  const onLedge = (p) => Math.abs(p[1] - L2[1]) <= 6 + 9 && p[0] >= L2[0] - L2W / 2 - 9 && p[0] <= L2[0] + L2W / 2 + 9;
+  const THROW = 1.25, CATCH_S = 1.07, CATCH = THROW + CATCH_S, LIFT = CATCH + 0.6;
+
   function drawIntro(time) {
     const t = time % LOOP;
     const at = (a, b) => ease((t - a) / (b - a)); // 0..1 between a and b seconds
     bg();
-    const L1 = [95, 200], L2 = [205, 118];
-    ledge(L1[0], L1[1], 100); ledge(L2[0], L2[1], 100);
-    // Phases (seconds): hang; aim 0.5-1.25; throw 1.25-1.55, the hand arcs up
-    // to the ledge; 1.55 on it keeps drifting across the ledge, glowing (no
-    // grab yet: it isn't automatic); at 1.9 the thumb taps and in that same
-    // frame the hand stops, grips and the glow goes; both held; let go and
-    // swing up 2.5-3.2; hang.
-    const ARRIVE = 1.55, CATCH = 1.9;
-    const aim = t >= 0.5 && t < 1.25, drag = at(0.5, 1.05);
-    const fly = Math.min(1, Math.max(0, (t - 1.25) / (ARRIVE - 1.25))), caught = t >= CATCH;
-    const touching = t >= ARRIVE && !caught;
-    const lifted = t >= 2.5, swing = at(2.5, 3.2);
-    // Across the ledge: slowing as it goes, like a throw near the top of its arc.
-    const drift = (u) => L2[0] - 38 + 76 * (1 - (1 - Math.min(1, u)) ** 2);
-    const entry = [drift(0), L2[1]];
-    const grip = [drift((CATCH - ARRIVE) / 0.6), L2[1]];
-    const bx = lerp(112, grip[0] - 9, swing), by = lerp(250, 166, swing) + Math.sin(t * 2) * 1.5;
+    const L1 = [95, 200];
+    ledge(L1[0], L1[1], 100); ledge(L2[0], L2[1], L2W);
+    // Phases: hang; aim 0.5-1.25; throw; catch on the way down; both held; let go and swing up; hang.
+    const aim = t >= 0.5 && t < THROW, drag = at(0.5, THROW - 0.2);
+    const flying = t >= THROW && t < CATCH, caught = t >= CATCH;
+    const lifted = t >= LIFT, swing = at(LIFT, LIFT + 0.7);
+    const grip = flightAt(CATCH_S);
+    const bx = lerp(112, grip[0] - 9, swing), by = lerp(250, 166, swing) + (swing ? 0 : Math.sin(t * 2) * 1.5);
     const rs = [bx + 13, by - 5];
     let r = null;
     if (aim) r = [rs[0] + 4 * drag, rs[1] + 14 * drag];
-    else if (t >= 1.25 && t < ARRIVE) r = [lerp(rs[0], entry[0], fly), lerp(rs[1], entry[1], fly) - Math.sin(fly * Math.PI) * 40];
-    else if (touching) r = [drift((t - ARRIVE) / 0.6), L2[1]];
+    else if (flying) r = flightAt(t - THROW);
     else if (caught) r = grip;
-    if (aim && drag > 0.1) dotsArc(rs, entry, 40, 'rgba(255,209,102,0.95)', 0.2 + 0.8 * drag);
+    const touching = flying && onLedge(r);
+    if (aim && drag > 0.1) { // the aim arc: where the throw will go
+      ctx.fillStyle = 'rgba(255,209,102,0.95)';
+      for (let s2 = 0.08; s2 <= 1.3 * (0.2 + 0.8 * drag); s2 += 0.08) {
+        const p = flightAt(s2);
+        ctx.beginPath(); ctx.arc(p[0], p[1], 2.4, 0, Math.PI * 2); ctx.fill();
+      }
+    }
     const swinging = swing > 0.05 && swing < 0.95;
     climber(bx, by, lifted ? null : [L1[0] + 5, L1[1]], r, !lifted, caught, swinging ? 'wow' : 'smile');
     if (swinging) {
@@ -327,7 +335,8 @@ window.Tutorial = (() => {
       key(lx, ly, 'A', !lifted, PINK);
       key(rx, ly, 'D', caught, YELLOW);
       if (caught) tapRing(rx, ly, (t - CATCH) / 0.3);
-      if (aim || (t >= 1.25 && t < 1.55)) {
+      if (lifted) tapRing(lx, ly, (t - LIFT) / 0.35);
+      if (aim || (t >= THROW && t < THROW + 0.3)) {
         const cy = 250 + (aim ? drag : 1) * 40;
         if (aim) { ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(rx - 60, 250); ctx.lineTo(rx - 60, cy); ctx.stroke(); ctx.setLineDash([]); }
         cursor(rx - 60, cy, aim);
@@ -336,13 +345,13 @@ window.Tutorial = (() => {
       ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.setLineDash([6, 8]); ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(W / 2, 290); ctx.lineTo(W / 2, H); ctx.stroke(); ctx.setLineDash([]);
       finger(lx, ly, !lifted, PINK);
-      // Throw: drag down from above. Catch: the thumb comes down onto the screen
-      // exactly as the grab happens (hovering, a little raised, until then).
-      const fy = aim ? ly - 30 + drag * 40 : touching ? ly - 10 * (1 - at(1.55, CATCH)) : ly;
+      // Throw: drag down from above, let go. Catch: the thumb comes down onto
+      // the screen exactly as the grab happens (hovering, raised, until then).
+      const fy = aim ? ly - 30 + drag * 40 : flying ? ly - 12 * (1 - at(CATCH - 0.35, CATCH)) : ly;
       if (aim) { ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(rx, ly - 30); ctx.lineTo(rx, fy); ctx.stroke(); ctx.setLineDash([]); }
       finger(rx, fy, aim || caught, YELLOW);
       if (caught) tapRing(rx, ly, (t - CATCH) / 0.3);
-      if (lifted) tapRing(lx, ly, (t - 2.5) / 0.35);
+      if (lifted) tapRing(lx, ly, (t - LIFT) / 0.35);
     }
     // A quick fade at the end of each loop.
     const fade = Math.max(0, (t - (LOOP - 0.35)) / 0.35);
