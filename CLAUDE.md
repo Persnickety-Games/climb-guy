@@ -19,6 +19,10 @@ When unsure, treat it as level-affecting. Develop and test it, keep it off `main
 
 People don't like reading. Menu cards, buttons, prompts and callouts say only what's needed to act, in as few words as possible. Leave out explanations of why something exists or who it's for (e.g. a Tutorial card is "Learn the basics.", not "in case you skipped it"). Most things should be intuitive without text.
 
+## Marketing copy
+
+Lead with what makes the game fun and different: each thumb is a hand, stretchy slingshot arms, flinging up, the rising water, the goofy hats and silly units. Don't sell "the same level for everyone every day": that's expected of any daily game, not a selling point. Mention the daily schedule at most once, low down, as a plain fact.
+
 ## Don't change
 
 - `EPOCH` in `daily.js` (Daily #1 = 2026-10-02): players have already shared daily numbers.
