@@ -1413,21 +1413,22 @@
     state.hint = { text: HINTS[kind](), at: state.time };
   }
 
+  // A small see-through note along the bottom edge, out of the way of the climb.
   function drawHint() {
     const t = state.hint;
     if (!t || state.phase === 'over') return;
     const age = state.time - t.at;
     if (age > HINT_SECS) return;
-    ctx.globalAlpha = Math.min(1, age * 6, (HINT_SECS - age) * 2);
-    ctx.font = 'bold 15px system-ui, sans-serif';
     const maxW = Math.min(cssW - 24, WORLD_W * scale - 16);
-    let size = 15;
-    while (size > 11 && ctx.measureText(t.text).width + 32 > maxW) { size -= 0.5; ctx.font = `bold ${size}px system-ui, sans-serif`; }
-    const w = Math.min(maxW, ctx.measureText(t.text).width + 32), cx = ox + (WORLD_W * scale) / 2, y = cssH * 0.46;
-    ctx.fillStyle = '#ffd166';
-    roundRect(cx - w / 2, y - 21, w, 34, 17);
+    let size = 13;
+    ctx.font = `bold ${size}px system-ui, sans-serif`;
+    while (size > 10 && ctx.measureText(t.text).width + 24 > maxW) { size -= 0.5; ctx.font = `bold ${size}px system-ui, sans-serif`; }
+    const w = Math.min(maxW, ctx.measureText(t.text).width + 24), cx = ox + (WORLD_W * scale) / 2, y = cssH - 30;
+    ctx.globalAlpha = Math.min(1, age * 6, (HINT_SECS - age) * 2);
+    ctx.fillStyle = 'rgba(10, 25, 40, 0.45)';
+    roundRect(cx - w / 2, y - 17, w, 26, 13);
     ctx.fill();
-    ctx.fillStyle = '#1b1b1b';
+    ctx.fillStyle = '#ffe29a';
     ctx.textAlign = 'center';
     ctx.fillText(t.text, cx, y + 1);
     ctx.textAlign = 'left';
