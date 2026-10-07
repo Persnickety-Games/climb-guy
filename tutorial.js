@@ -7,8 +7,10 @@ window.Tutorial = (() => {
   const $ = (sel) => root.querySelector(sel);
   const root = document.getElementById('tutorial');
   const art = $('.tut-art');
-  const ctx = art.getContext('2d');
-  const W = 300, H = 190;
+  // The drawing helpers below draw on ctx at size W x H: the cards' canvas, or
+  // the intro clip's while it plays.
+  const cardCtx = art.getContext('2d');
+  let ctx = cardCtx, W = 300, H = 190;
   let slide = 0, firstTime = false, raf = 0, t0 = 0;
 
   const PINK = '#ff5fa2', YELLOW = '#ffd166', BODY = '#e8873a', LEDGE = '#6b5440', WATER = '#3a7bd5';
@@ -241,9 +243,125 @@ window.Tutorial = (() => {
     try { localStorage.setItem(KEY, 'seen'); } catch {}
   }
 
+  // ---------- Intro clip ----------
+  // A few seconds, no words: the whole move, looping. Hang from one hand, throw
+  // the other up, catch, let go of the low hand and swing up. Each thumb is
+  // ringed in its hand's color (with a mouse: a mouse drag and the A/D keys).
+  // Plays before training; "Let's go" appears once it has played through.
+  const intro = document.getElementById('intro');
+  const introArt = intro.querySelector('.intro-art');
+  const introGo = intro.querySelector('.intro-go');
+  const IW = 300, IH = 380, LOOP = 4.6;
+  let introRaf = 0, introT0 = 0, introDone = null;
+
+  function key(x, y, label, pressed, color) {
+    ctx.fillStyle = pressed ? color : 'rgba(255,255,255,0.9)';
+    ctx.beginPath(); ctx.roundRect(x - 20, y - 20 + (pressed ? 3 : 0), 40, 40, 8); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = '#1b1b1b'; ctx.font = 'bold 20px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(label, x, y + 7 + (pressed ? 3 : 0)); ctx.textAlign = 'left';
+  }
+  // Pressed: filled with its hand's color. Lifted: just a faint ring.
+  function finger(x, y, pressed, color) {
+    ctx.fillStyle = pressed ? color : 'rgba(255,255,255,0.1)';
+    ctx.globalAlpha = pressed ? 0.75 : 1;
+    ctx.beginPath(); ctx.arc(x, y, pressed ? 19 : 22, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = pressed ? '#fff' : color; ctx.lineWidth = 3; ctx.stroke();
+  }
+  function cursor(x, y, pressed) {
+    ctx.fillStyle = pressed ? YELLOW : '#fff'; ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x, y + 22); ctx.lineTo(x + 6, y + 16); ctx.lineTo(x + 11, y + 26);
+    ctx.lineTo(x + 15, y + 24); ctx.lineTo(x + 10, y + 14); ctx.lineTo(x + 17, y + 14); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+  }
+
+  function drawIntro(time) {
+    const t = time % LOOP;
+    const at = (a, b) => ease((t - a) / (b - a)); // 0..1 between a and b seconds
+    bg();
+    const L1 = [95, 200], L2 = [205, 118];
+    ledge(L1[0], L1[1], 100); ledge(L2[0], L2[1], 100);
+    // Phases (seconds): hang, aim 0.5-1.3, fly 1.3-1.7, catch 1.75, both 1.85-2.4, let go and swing 2.4-3.1, hang.
+    const aim = t >= 0.5 && t < 1.3, drag = at(0.5, 1.1);
+    const fly = at(1.3, 1.7), caught = t >= 1.75;
+    const lifted = t >= 2.4, swing = at(2.4, 3.1);
+    const bx = lerp(112, 196, swing), by = lerp(250, 166, swing) + Math.sin(t * 2) * 1.5;
+    const rs = [bx + 13, by - 5];
+    let r = null;
+    if (aim) r = [rs[0] + 4 * drag, rs[1] + 14 * drag];
+    else if (t >= 1.3 && !caught) r = [lerp(rs[0], L2[0], fly), lerp(rs[1], L2[1], fly) - Math.sin(fly * Math.PI) * 40];
+    else if (caught) r = [L2[0], L2[1]];
+    if (aim && drag > 0.1) dotsArc(rs, L2, 40, 'rgba(255,209,102,0.95)', 0.2 + 0.8 * drag);
+    const swinging = swing > 0.05 && swing < 0.95;
+    climber(bx, by, lifted ? null : [L1[0] + 5, L1[1]], r, !lifted, caught, swinging ? 'wow' : 'smile');
+    if (swinging) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
+      for (const dx of [-10, 0, 10]) { ctx.beginPath(); ctx.moveTo(bx + dx, by + 24); ctx.lineTo(bx + dx, by + 44); ctx.stroke(); }
+    }
+    if (caught) tapRing(L2[0], L2[1], (t - 1.75) / 0.3);
+    // The player's side: two thumbs (or mouse and keys) along the bottom.
+    ctx.fillStyle = 'rgba(10,25,40,0.25)'; ctx.fillRect(0, 290, W, H - 290);
+    const ly = 335, lx = 75, rx = 225;
+    if (mouse()) {
+      key(lx, ly, 'A', !lifted, PINK);
+      key(rx, ly, 'D', caught, YELLOW);
+      if (aim || (t >= 1.3 && t < 1.6)) {
+        const cy = 250 + (aim ? drag : 1) * 40;
+        if (aim) { ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(rx - 60, 250); ctx.lineTo(rx - 60, cy); ctx.stroke(); ctx.setLineDash([]); }
+        cursor(rx - 60, cy, aim);
+      }
+    } else {
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.setLineDash([6, 8]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(W / 2, 290); ctx.lineTo(W / 2, H); ctx.stroke(); ctx.setLineDash([]);
+      finger(lx, ly, !lifted, PINK);
+      const fy = aim ? ly - 30 + drag * 40 : ly;
+      if (aim) { ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(rx, ly - 30); ctx.lineTo(rx, fy); ctx.stroke(); ctx.setLineDash([]); }
+      finger(rx, fy, aim || caught, YELLOW);
+      if (caught) tapRing(rx, ly, (t - 1.75) / 0.3);
+      if (lifted) tapRing(lx, ly, (t - 2.4) / 0.35);
+    }
+    // A quick fade at the end of each loop.
+    const fade = Math.max(0, (t - (LOOP - 0.35)) / 0.35);
+    if (fade > 0) { ctx.fillStyle = `rgba(16,36,58,${fade})`; ctx.fillRect(0, 0, W, H); }
+  }
+
+  function introLoop(now) {
+    if (intro.hidden) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    if (introArt.width !== IW * dpr) { introArt.width = IW * dpr; introArt.height = IH * dpr; }
+    const saved = [ctx, W, H];
+    ctx = introArt.getContext('2d'); W = IW; H = IH;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.textAlign = 'left';
+    const time = (now - introT0) / 1000;
+    drawIntro(time);
+    [ctx, W, H] = saved;
+    if (time >= LOOP - 0.4 && introGo.hidden) introGo.hidden = false; // played through once
+    introRaf = requestAnimationFrame(introLoop);
+  }
+
+  function playIntro(onDone) {
+    introDone = onDone;
+    intro.hidden = false;
+    introGo.hidden = true;
+    introT0 = performance.now();
+    cancelAnimationFrame(introRaf);
+    introRaf = requestAnimationFrame(introLoop);
+  }
+
+  introGo.addEventListener('click', () => {
+    intro.hidden = true;
+    cancelAnimationFrame(introRaf);
+    const done = introDone;
+    introDone = null;
+    if (done) done();
+  });
+
   return {
-    open, close, markSeen,
-    isOpen: () => !root.hidden,
+    open, close, markSeen, playIntro,
+    isOpen: () => !root.hidden || !intro.hidden,
     // Only for brand-new players: anyone who has played before has seen the ropes.
     get shouldShow() { return !seen && !Progress.stats().totalRuns && !Progress.endlessRuns && !Progress.sprintRuns; },
   };

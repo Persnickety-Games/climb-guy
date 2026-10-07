@@ -815,125 +815,6 @@
     ctx.globalAlpha = 1;
   }
 
-  // MOCKUP (unlisted: ?mode=learn&ghost): while a skill card is up and the
-  // player isn't touching anything, a faint thumb (or mouse and keys) shows
-  // the move on the screen, looping.
-  const GHOST = PARAMS.has('ghost');
-  let lastInputAt = 0;
-  const noteInput = () => { lastInputAt = performance.now(); };
-  canvas.addEventListener('pointerdown', noteInput);
-  window.addEventListener('keydown', noteInput);
-
-  function drawGhost() {
-    const t = state.training;
-    if (!GHOST || !t || t.climbing || state.phase === 'over') return;
-    if (state.thumbs.some(th => th && th.mode !== 'grip') || performance.now() - lastInputAt < 1500 || state.time - t.stepAt < 1) return;
-    const held = state.hands.map(h => h.state === 'held');
-    const free = [LEFT, RIGHT].filter(i => !held[i] && state.hands[i].state !== 'flying');
-    const k = ((performance.now() / 1000) % 2.2) / 2.2;
-    const fade = Math.min(1, (performance.now() - lastInputAt - 1500) / 400);
-    ctx.save();
-    ctx.globalAlpha = fade;
-    const step = t.step;
-    // What to show: hold (a thumb staying down), throw (drag down, let go), tap, lift.
-    const acts = [];
-    if (step === 0) acts.push(['throw', free.includes(LEFT) || !free.length ? LEFT : RIGHT]);
-    else if (step === 1) acts.push(['tap', state.hands.findIndex(h => h.state === 'flying') >= 0 ? state.hands.findIndex(h => h.state === 'flying') : LEFT]);
-    else if (held[0] && held[1]) {
-      const low = state.hands[0].y < state.hands[1].y ? LEFT : RIGHT;
-      acts.push(['hold', 1 - low], ['lift', low]);
-    } else {
-      const h = held.indexOf(true);
-      if (h >= 0) acts.push(['hold', h], ['throw', 1 - h]);
-      else acts.push(['throw', LEFT]);
-    }
-    for (const [act, i] of acts) (Controls.mouse ? ghostDesk : ghostTouch)(act, i, k);
-    ctx.restore();
-  }
-
-  function ghostThumb(x, y, pressed, label) {
-    ctx.fillStyle = `rgba(255,255,255,${pressed ? 0.35 : 0.12})`;
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(x, y, pressed ? 24 : 28, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.font = '30px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('👆', x + 4, y + 40);
-    if (label) {
-      ctx.font = 'bold 12px system-ui, sans-serif';
-      ctx.fillStyle = '#fff';
-      ctx.fillText(label, x, y - 36);
-    }
-    ctx.textAlign = 'left';
-  }
-
-  function ghostTouch(act, i, k) {
-    const x = cssW * (i === LEFT ? 0.25 : 0.75), y0 = cssH * 0.66;
-    if (act === 'hold') return ghostThumb(x, y0, true, 'HOLD');
-    if (act === 'tap') return ghostThumb(x, y0, k > 0.3 && k < 0.85, k > 0.3 ? 'TAP & HOLD' : 'TAP…');
-    if (act === 'lift') return ghostThumb(x, y0 - (k > 0.5 ? (k - 0.5) * 60 : 0), k <= 0.5, k <= 0.5 ? 'HOLD…' : 'LIFT!');
-    // throw: press, drag down, let go
-    const d = k < 0.15 ? 0 : k < 0.6 ? (k - 0.15) / 0.45 : 1;
-    const y = y0 + d * 100;
-    if (d > 0) {
-      ctx.setLineDash([6, 6]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y); ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    ghostThumb(x, y, k > 0.1 && k < 0.65, k < 0.65 ? 'DRAG DOWN' : 'LET GO');
-  }
-
-  function ghostKey(x, y, key, pressed, label) {
-    ctx.fillStyle = pressed ? 'rgba(255,209,102,0.95)' : 'rgba(255,255,255,0.85)';
-    roundRect(x - 22, y - 22 + (pressed ? 3 : 0), 44, 44, 8);
-    ctx.fill();
-    ctx.fillStyle = '#1b1b1b';
-    ctx.font = 'bold 20px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(key, x, y + 7 + (pressed ? 3 : 0));
-    if (label) {
-      ctx.font = 'bold 12px system-ui, sans-serif';
-      ctx.fillStyle = '#fff';
-      ctx.fillText(label, x, y - 32);
-    }
-    ctx.textAlign = 'left';
-  }
-
-  function ghostDesk(act, i, k) {
-    const colW = WORLD_W * scale, x = ox + colW * (i === LEFT ? 0.3 : 0.7), y = cssH * 0.78;
-    const key = i === LEFT ? 'A' : 'D';
-    if (act === 'hold') return ghostKey(x, y, key, true, 'HOLD');
-    if (act === 'tap') return ghostKey(x, y, key, k > 0.3 && k < 0.85, k > 0.3 ? 'PRESS & HOLD' : 'PRESS…');
-    if (act === 'lift') return ghostKey(x, y, key, k <= 0.5, k <= 0.5 ? 'HOLD…' : 'LET GO!');
-    // throw with the mouse: a cursor that drags down from the hand's side
-    const h = state.hands[i];
-    const cx0 = ox + h.x * scale + (i === LEFT ? -50 : 50), cy0 = cssH - (h.y - state.cam) * scale - 60;
-    const d = k < 0.15 ? 0 : k < 0.6 ? (k - 0.15) / 0.45 : 1;
-    const cy = cy0 + d * 110;
-    if (d > 0) {
-      ctx.setLineDash([6, 6]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(cx0, cy0); ctx.lineTo(cx0, cy); ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    // cursor arrow
-    ctx.fillStyle = k > 0.1 && k < 0.65 ? '#ffd166' : '#fff';
-    ctx.strokeStyle = '#1b1b1b';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(cx0, cy); ctx.lineTo(cx0, cy + 22); ctx.lineTo(cx0 + 6, cy + 16); ctx.lineTo(cx0 + 11, cy + 26);
-    ctx.lineTo(cx0 + 15, cy + 24); ctx.lineTo(cx0 + 10, cy + 14); ctx.lineTo(cx0 + 17, cy + 14); ctx.closePath();
-    ctx.fill(); ctx.stroke();
-    ctx.font = 'bold 12px system-ui, sans-serif';
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.fillText(k < 0.65 ? 'CLICK & DRAG DOWN' : 'LET GO', cx0, cy0 - 14);
-    ctx.textAlign = 'left';
-  }
-
   function drawTrainingOver(cx) {
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, cssW, cssH);
@@ -1393,8 +1274,8 @@
 
   // ---------- Beginner help ----------
   // For a player's first few runs (and in training): a short hint when they
-  // make one of the common early mistakes, a glow on a hand that's touching a
-  // ledge (grab now!), and, with a mouse, A and D labels on the hands.
+  // make one of the common early mistakes, and with a mouse, A and D labels on
+  // the hands. (The glow on a hand that can grab is for everyone.)
   const BEGINNER_RUNS = 5;
   const runsSoFar = () => Progress.stats().totalRuns + Progress.endlessRuns + Progress.sprintRuns;
   const HINTS = {
@@ -1435,9 +1316,10 @@
     ctx.globalAlpha = 1;
   }
 
-  // A hand that can grab right now glows (world space).
+  // A hand that can grab right now glows, for everyone (world space). Not a
+  // hurt hand (Ouch!!) or during Auto-grab, and ghost ledges don't count.
   function drawGrabGlow() {
-    if (!state.beginner || state.phase === 'over' || active('autoGrab')) return;
+    if (state.phase === 'over' || active('autoGrab')) return;
     state.hands.forEach((h, i) => {
       if (h.state === 'held' || hurt(i) || !holdUnder(h)) return;
       const pulse = 0.5 + 0.5 * Math.sin(state.time * 14);
@@ -2513,7 +2395,6 @@
     if (learn()) drawCoach(top + 38);
     drawKeyLabels();
     drawHint();
-    if (learn()) drawGhost();
     drawEffects(learn() ? top + 38 + COACH_H + 6 : top + 60);
     if (!learn()) drawToast(); // in training, the callouts say what balloons do
 
@@ -2901,7 +2782,9 @@
     e.preventDefault();
     // Left the start screen open past midnight Eastern? Build the new day's level.
     if (daily() && Daily.today().key !== day.key) newGame();
-    dismissStart();
+    // Training opens with a short clip of the move.
+    if (learn() && !state.training.climbing) Tutorial.playIntro(dismissStart);
+    else dismissStart();
   }
   function dismissStart() {
     started = true;
@@ -2920,7 +2803,8 @@
     else leaveTrainingUrl();
     skin = Progress.equipped();
     newGame();
-    dismissStart();
+    if (m === 'learn') Tutorial.playIntro(dismissStart);
+    else dismissStart();
   }
   $('start-skip').addEventListener('click', () => { Analytics.event('learn-skipped'); finishTraining(); });
   for (const b of startEl.querySelectorAll('[data-mode]')) b.addEventListener('click', () => playMode(b.dataset.mode));
