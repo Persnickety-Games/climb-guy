@@ -88,8 +88,10 @@
   // a resize event when you come back.
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 3);
-    cssW = canvas.clientWidth || window.innerWidth;
-    cssH = canvas.clientHeight || window.innerHeight;
+    const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight;
+    if (!w || !h) return; // a hidden tab can measure 0 x 0: keep the last good size
+    cssW = w;
+    cssH = h;
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
     scale = Math.min(cssW / WORLD_W, cssH / 560);

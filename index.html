@@ -145,5 +145,22 @@
                    '<script src="units.js?v=' + window.CLIMBER_V + '"><\/script>' +
                    '<script src="game.js?v=' + window.CLIMBER_V + '"><\/script>');
   </script>
+  <script>
+    // If the game didn't load (most often a tab coming back after a while with
+    // no connection yet), the page would sit on "Tap anywhere to start" doing
+    // nothing. Reload once by itself; if that fails too, say so and retry on a
+    // tap or when the connection comes back.
+    window.addEventListener('load', function () {
+      if (window.climber) { try { sessionStorage.removeItem('cg.reloaded'); } catch (e) {} return; }
+      var retried = false;
+      try { retried = sessionStorage.getItem('cg.reloaded') === '1'; sessionStorage.setItem('cg.reloaded', '1'); } catch (e) {}
+      var reload = function () { location.reload(); };
+      if (!retried && navigator.onLine !== false) { setTimeout(reload, 300); return; }
+      var tap = document.getElementById('start-tap');
+      if (tap) tap.textContent = "Couldn't load. Tap to try again.";
+      document.getElementById('start').addEventListener('pointerdown', reload);
+      window.addEventListener('online', reload);
+    });
+  </script>
 </body>
 </html>
