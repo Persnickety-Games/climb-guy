@@ -193,7 +193,7 @@ window.Tutorial = (() => {
   function loop(now) {
     if (root.hidden) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    if (art.width !== W * dpr) { art.width = W * dpr; art.height = H * dpr; }
+    if (art.width !== W * dpr || art.height !== H * dpr) { art.width = W * dpr; art.height = H * dpr; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.textAlign = 'left';
     SLIDES[slide].draw((now - t0) / 1000);
@@ -283,15 +283,19 @@ window.Tutorial = (() => {
     bg();
     const L1 = [95, 200], L2 = [205, 118];
     ledge(L1[0], L1[1], 100); ledge(L2[0], L2[1], 100);
-    // Phases (seconds): hang, aim 0.5-1.3, fly 1.3-1.7, catch 1.75, both 1.85-2.4, let go and swing 2.4-3.1, hang.
-    const aim = t >= 0.5 && t < 1.3, drag = at(0.5, 1.1);
-    const fly = at(1.3, 1.7), caught = t >= 1.75;
-    const lifted = t >= 2.4, swing = at(2.4, 3.1);
+    // Phases (seconds): hang, aim 0.5-1.25, fly 1.25-1.55, the hand touches the
+    // ledge and glows 1.55-1.9, tap to catch at 1.9 (thumb, ring and grip all at
+    // once), both held, let go and swing 2.5-3.2, hang.
+    const CATCH = 1.9;
+    const aim = t >= 0.5 && t < 1.25, drag = at(0.5, 1.05);
+    const fly = Math.min(1, Math.max(0, (t - 1.25) / 0.3)), caught = t >= CATCH;
+    const touching = t >= 1.55 && !caught;
+    const lifted = t >= 2.5, swing = at(2.5, 3.2);
     const bx = lerp(112, 196, swing), by = lerp(250, 166, swing) + Math.sin(t * 2) * 1.5;
     const rs = [bx + 13, by - 5];
     let r = null;
     if (aim) r = [rs[0] + 4 * drag, rs[1] + 14 * drag];
-    else if (t >= 1.3 && !caught) r = [lerp(rs[0], L2[0], fly), lerp(rs[1], L2[1], fly) - Math.sin(fly * Math.PI) * 40];
+    else if (t >= 1.25 && !caught) r = [lerp(rs[0], L2[0], fly), lerp(rs[1], L2[1], fly) - Math.sin(fly * Math.PI) * 40];
     else if (caught) r = [L2[0], L2[1]];
     if (aim && drag > 0.1) dotsArc(rs, L2, 40, 'rgba(255,209,102,0.95)', 0.2 + 0.8 * drag);
     const swinging = swing > 0.05 && swing < 0.95;
@@ -300,14 +304,23 @@ window.Tutorial = (() => {
       ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
       for (const dx of [-10, 0, 10]) { ctx.beginPath(); ctx.moveTo(bx + dx, by + 24); ctx.lineTo(bx + dx, by + 44); ctx.stroke(); }
     }
-    if (caught) tapRing(L2[0], L2[1], (t - 1.75) / 0.3);
+    if (touching) { // the grab glow, as in the game
+      const pulse = 0.5 + 0.5 * Math.sin(t * 14);
+      ctx.fillStyle = `rgba(125, 255, 176, ${0.25 + 0.2 * pulse})`;
+      ctx.beginPath(); ctx.arc(L2[0], L2[1], 16 + pulse * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(L2[0], L2[1], 13, 0, Math.PI * 2); ctx.stroke();
+      hand(L2[0], L2[1], YELLOW, false); // the hand on top of its glow
+    }
+    if (caught) tapRing(L2[0], L2[1], (t - CATCH) / 0.3);
     // The player's side: two thumbs (or mouse and keys) along the bottom.
     ctx.fillStyle = 'rgba(10,25,40,0.25)'; ctx.fillRect(0, 290, W, H - 290);
     const ly = 335, lx = 75, rx = 225;
     if (mouse()) {
       key(lx, ly, 'A', !lifted, PINK);
       key(rx, ly, 'D', caught, YELLOW);
-      if (aim || (t >= 1.3 && t < 1.6)) {
+      if (caught) tapRing(rx, ly, (t - CATCH) / 0.3);
+      if (aim || (t >= 1.25 && t < 1.55)) {
         const cy = 250 + (aim ? drag : 1) * 40;
         if (aim) { ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(rx - 60, 250); ctx.lineTo(rx - 60, cy); ctx.stroke(); ctx.setLineDash([]); }
         cursor(rx - 60, cy, aim);
@@ -316,11 +329,13 @@ window.Tutorial = (() => {
       ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.setLineDash([6, 8]); ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(W / 2, 290); ctx.lineTo(W / 2, H); ctx.stroke(); ctx.setLineDash([]);
       finger(lx, ly, !lifted, PINK);
-      const fy = aim ? ly - 30 + drag * 40 : ly;
+      // Throw: drag down from above. Catch: the thumb comes down onto the screen
+      // exactly as the grab happens (hovering, a little raised, until then).
+      const fy = aim ? ly - 30 + drag * 40 : touching ? ly - 10 * (1 - at(1.55, CATCH)) : ly;
       if (aim) { ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(rx, ly - 30); ctx.lineTo(rx, fy); ctx.stroke(); ctx.setLineDash([]); }
       finger(rx, fy, aim || caught, YELLOW);
-      if (caught) tapRing(rx, ly, (t - 1.75) / 0.3);
-      if (lifted) tapRing(lx, ly, (t - 2.4) / 0.35);
+      if (caught) tapRing(rx, ly, (t - CATCH) / 0.3);
+      if (lifted) tapRing(lx, ly, (t - 2.5) / 0.35);
     }
     // A quick fade at the end of each loop.
     const fade = Math.max(0, (t - (LOOP - 0.35)) / 0.35);
@@ -330,7 +345,7 @@ window.Tutorial = (() => {
   function introLoop(now) {
     if (intro.hidden) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    if (introArt.width !== IW * dpr) { introArt.width = IW * dpr; introArt.height = IH * dpr; }
+    if (introArt.width !== IW * dpr || introArt.height !== IH * dpr) { introArt.width = IW * dpr; introArt.height = IH * dpr; }
     const saved = [ctx, W, H];
     ctx = introArt.getContext('2d'); W = IW; H = IH;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
