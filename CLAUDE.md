@@ -21,7 +21,7 @@ People don't like reading. Menu cards, buttons, prompts and callouts say only wh
 
 ## Marketing copy
 
-Lead with what makes the game fun and different: each thumb is a hand, stretchy slingshot arms, flinging up, the rising water, the goofy hats and silly units. Don't sell "the same level for everyone every day": that's expected of any daily game, not a selling point. Mention the daily schedule at most once, low down, as a plain fact.
+Lead with what makes the game fun and different: each thumb is a hand, stretchy slingshot arms, flinging up, the rising water, the goofy hats and silly units. Don't sell "the same level for everyone every day": that's expected of any daily game, not a selling point. Mention the daily schedule at most once, low down, as a plain fact. No comparisons to Wordle (or "X, but Y" lines built on another game): people hear "Wordle" and expect a guessing game with hints, which this isn't.
 
 ## Don't change
 
