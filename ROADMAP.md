@@ -2,6 +2,10 @@
 
 Ideas captured for later. Nothing here is built yet unless marked done.
 
+## To do: remove Grappler (around Oct 15)
+
+Grappler (hook mode, `?mode=grappler`) was a prototype from a Reddit tester's idea: a bit better after tuning, but not good enough to make public. The link was shared with the tester for feedback. About a week later, remove it: the `hook()` branches in game.js (the "Hook mode" section, spawnHookRow, the hook checks in input, throwing, grab, pickPower, gameOver, HUD and start screen), `?mode=hook|grappler`, the README paragraph and the `cg.hookBest` key's use. Check the daily layout is unchanged after.
+
 ## Done: Training
 
 Testers found the start hard, then fun once it clicked. Training (see README) is now where brand-new players start, and it's in ☰ Modes as "🎓 Tutorial".
