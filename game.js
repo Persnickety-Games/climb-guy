@@ -1216,7 +1216,8 @@
     // A first finger down means no other finger is touching, so any thumb we
     // still think is down lost its "lifted" event (iPhones sometimes drop it).
     if (e.isPrimary) releaseAllThumbs();
-    const i = sideOf(e.clientX);
+    const i = hook() ? hookHand() : sideOf(e.clientX); // Grappler only: one thumb, the game picks the hand
+    if (i < 0) return;
     if (state.thumbs[i]) {
       if (state.thumbs[i].id === e.pointerId) return;
       // A new finger on a side that we think already has one: the old one must
@@ -1292,7 +1293,7 @@
       const h = state.hands[i], t = state.thumbs[i];
       return (h.state === 'idle' || h.state === 'returning') && (!t || t.mode === 'none');
     });
-    if (hook() && !free.length) free = [LEFT, RIGHT].filter(i => state.hands[i].state === 'held' && !state.thumbs[i]);
+    if (hook()) free = [hookHand()].filter(i => i >= 0); // Grappler only: the game picks the hand
     // Clicking to grab (a hand passing a ledge, or the opening drop): the keys do that.
     if (state.phase === 'ready' || state.hands.some((h, k) => h.state !== 'held' && !hurt(k) && holdUnder(h))) hint('keys');
     if (!free.length) return;
@@ -1336,10 +1337,22 @@
   // Hands are hooks: no grabbing. A thrown hook bounces off a ledge it hits
   // from below or the side, and catches by itself when it comes down onto the
   // top of one. When a hook catches higher than the other hand's ledge, the
-  // other hand lets go, so the climber swings up on its own. Drag any hand,
-  // hooked or not, to throw it. A falling climber with nothing held hooks on
+  // other hand lets go, so the climber swings up on its own. One thumb: drag
+  // anywhere to throw, and the game picks the hand (see hookHand). A falling climber with nothing held hooks on
   // with a hand at the shoulder too, so a miss isn't the end. The opening drop always falls a third of the screen before a hook
   // can catch, and the ledges under the drop make sure one does.
+  // One thumb: which hand a drag throws. A free hand if there is one (taking
+  // turns when both are free); with both hooked, the lower one; nothing while
+  // a hook is in the air or one is already being aimed.
+  function hookHand() {
+    const { hands, thumbs } = state;
+    if (thumbs.some(t => t && t.mode === 'aim') || hands.some(h => h.state === 'flying')) return -1;
+    const free = [LEFT, RIGHT].filter(i => hands[i].state === 'idle' || hands[i].state === 'returning');
+    if (free.length === 2) return state.lastThrown === LEFT ? RIGHT : LEFT;
+    if (free.length === 1) return free[0];
+    return hands[LEFT].hold.y < hands[RIGHT].hold.y ? LEFT : RIGHT;
+  }
+
   // h: the hand; py: its height before this step. `sim` is a copy used to
   // draw the aim arc (bounces and all) without catching anything.
   function hookCollide(i, h, py, sim = false) {
@@ -1561,6 +1574,7 @@
     if (hook() && h.state === 'held') letGo(i); // unhook and throw in one move
     if (h.state !== 'idle' && h.state !== 'returning') return;
     h.fromHold = hook() ? from : null;
+    state.lastThrown = i;
     const s = shoulder(i);
     Object.assign(h, { state: 'flying', x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y });
     sfx.throw();
@@ -2018,7 +2032,7 @@
     }
 
     // Faint divider between the two thumb zones (touch only).
-    if (!Controls.mouse) {
+    if (!Controls.mouse && !hook()) { // (Grappler is one thumb: no sides)
       ctx.strokeStyle = 'rgba(255,255,255,0.1)';
       ctx.lineWidth = 3;
       ctx.setLineDash([8, 10]);
