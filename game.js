@@ -298,7 +298,7 @@
     while (state.holdsTop < state.cam + viewH + T.armReach + 200) {
       // Difficulty 0..1, ramping gently over the first 500 m climbed.
       const d = clamp((state.holdsTop - state.baseY) / (FULL_DIFFICULTY_M * UNITS_PER_METER), 0, 1) * (learn() ? 0.3 : 1);
-      const y = state.holdsTop + lerp(85, 155, d) * R.rows.r(0.75, 1.25) * DAY.rowGap;
+      const y = state.holdsTop + lerp(85, 155, d) * R.rows.r(0.75, 1.25) * DAY.rowGap * (hook() ? 1.3 : 1); // Grappler: sparser rows
       spawnRow(y, d);
       state.holdsTop = y;
     }
@@ -349,16 +349,17 @@
     state.lastRow = row;
   }
 
-  // Hook mode's ledges: never stacked. A hook has to rise beside a ledge and
+  // Hook mode's ledges: sparser than the other modes (mostly one a row, rows
+  // 30% further apart) and never stacked. A hook has to rise beside a ledge and
   // come down onto it, so no ledge sits over one in the row below: there's
   // always a gap of at least HOOK_GAP between them. No tall pillars, and
   // checkpoints are narrower. (The opening drop lands on the start ledge,
   // which is centered under it.)
-  const HOOK_GAP = 45;
+  const HOOK_GAP = 60;
   function spawnHookRow(y, d) {
     const r = R.rows;
     const prev = state.lastRow || [state.holds[0]];
-    const count = r.p(clamp(lerp(0.5, 0.2, d), 0, 0.9)) ? 2 : 1;
+    const count = r.p(clamp(lerp(0.2, 0.08, d), 0, 0.9)) ? 2 : 1; // mostly one ledge a row
     const slotW = WORLD_W / count;
     const row = [];
     // Where a ledge of width w may go: not over (or within HOOK_GAP of) any ledge below, nor this row's others.
