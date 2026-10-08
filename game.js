@@ -128,16 +128,16 @@
   // best) are in the ☰ Modes tab, or opened by a ?mode=endless / ?mode=sprint link.
   const SPRINT_SECS = 60;
   // Training (?mode=learn, or climbguy.xyz/learn) is a guided first climb; see "Training" below.
-  const URL_MODE = new URLSearchParams(location.search).get('mode');
+  const URL_MODE = { grappler: 'hook' }[new URLSearchParams(location.search).get('mode')] || new URLSearchParams(location.search).get('mode'); // Grappler is 'hook' inside
   // Brand-new players (no runs yet, haven't finished or skipped training) start
   // in training, unless a link asks for Endless or Sprint.
   let mode = ['sprint', 'endless', 'learn', 'hook'].includes(URL_MODE) ? URL_MODE : Tutorial.shouldShow ? 'learn' : 'daily';
   const sprint = () => mode === 'sprint';
   const daily = () => mode === 'daily';
   const learn = () => mode === 'learn';
-  const hook = () => mode === 'hook'; // PROTOTYPE (unlisted, ?mode=hook): see "Hook mode" below
+  const hook = () => mode === 'hook'; // Grappler (PROTOTYPE, unlisted, ?mode=grappler): see "Hook mode" below
   const modeBest = () => (learn() ? 0 : hook() ? store.get('cg.hookBest', 0) : sprint() ? Progress.sprintBest : daily() ? Progress.best : Progress.endlessBest);
-  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ', learn: '', hook: 'Hook ' };
+  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ', learn: '', hook: 'Grappler ' };
   // The main badges, stats and landmarks come only from the daily.
   const mainAward = (id) => (daily() ? Progress.award(id) : null);
   let day = Daily.today();         // the daily being played; refreshed at each new game
@@ -173,7 +173,7 @@
     applyTuning();
     CHALLENGE = challengeFor(mode);
     const startHold = learn() ? { x: WORLD_W / 2, y: START_Y, w: WORLD_W, h: 24, floor: true, color: '#7a6a58' }
-      : { x: 200, y: START_Y, w: 240, h: 20, ci: 0 };
+      : { x: 200, y: START_Y, w: hook() ? 160 : 240, h: 20, ci: 0 }; // hook mode: narrower, so the row above can sit beside it
     const cam = learn() ? START_Y - 40 : START_Y - 120;
     state = {
       phase: 'ready',          // ready (opening drop) | playing | over
@@ -310,6 +310,7 @@
   const FULL_DIFFICULTY_M = 500; // ledges keep thinning out and shrinking until here
 
   function spawnRow(y, d) {
+    if (hook()) return spawnHookRow(y, d);
     const r = R.rows;
     const count = r.p(clamp(lerp(0.55, 0.15, d) * DAY.pairs, 0, 0.9)) ? 2 : 1;
     const slotW = WORLD_W / count;
@@ -344,6 +345,59 @@
       maybeAddGhost(row, y);
       maybeMakeIcy(row, y);
     }
+    state.holds.push(...row);
+    state.lastRow = row;
+  }
+
+  // Hook mode's ledges: never stacked. A hook has to rise beside a ledge and
+  // come down onto it, so no ledge sits over one in the row below: there's
+  // always a gap of at least HOOK_GAP between them. No tall pillars, and
+  // checkpoints are narrower. (The opening drop lands on the start ledge,
+  // which is centered under it.)
+  const HOOK_GAP = 45;
+  function spawnHookRow(y, d) {
+    const r = R.rows;
+    const prev = state.lastRow || [state.holds[0]];
+    const count = r.p(clamp(lerp(0.5, 0.2, d), 0, 0.9)) ? 2 : 1;
+    const slotW = WORLD_W / count;
+    const row = [];
+    // Where a ledge of width w may go: not over (or within HOOK_GAP of) any ledge below, nor this row's others.
+    const fits = (x, w) => x >= w / 2 + 6 && x <= WORLD_W - w / 2 - 6
+      && prev.concat(row).every(o => Math.abs(o.x - x) >= (o.w + w) / 2 + HOOK_GAP);
+    const place = (want, w) => {
+      if (fits(want, w)) return want;
+      const spots = [];
+      for (const o of prev.concat(row)) for (const side of [-1, 1]) spots.push(o.x + side * ((o.w + w) / 2 + HOOK_GAP + 1));
+      spots.push(w / 2 + 6, WORLD_W - w / 2 - 6);
+      const ok = spots.filter(x => fits(x, w)).sort((a, b) => Math.abs(a - want) - Math.abs(b - want));
+      return ok.length ? ok[0] : null;
+    };
+    const cp = checkpointFor(y);
+    if (cp) {
+      cp.w = 140;
+      cp.x = place(WORLD_W / 2, cp.w) ?? place(WORLD_W / 2, (cp.w = 90));
+      if (cp.x != null) row.push(cp);
+    }
+    for (let i = 0; i < count && !cp; i++) {
+      let w = Math.min(lerp(140, 70, d) * r.r(0.7, 1.3) * DAY.ledgeW / (count === 2 ? 1.4 : 1), slotW - 12);
+      const h = r.r(14, 22);
+      const want = r.r(slotW * i + w / 2 + 6, slotW * (i + 1) - w / 2 - 6);
+      let x = place(want, w);
+      if (x == null) x = place(want, (w = 60));
+      if (x == null) continue;
+      row.push({ x, y: y + r.r(-15, 15), w, h, ci: r.i(5) });
+    }
+    if (!row.length) { // no room: a short ledge in the widest open space
+      const x = place(WORLD_W / 2, 50) ?? (prev[0].x < WORLD_W / 2 ? WORLD_W - 31 : 31);
+      row.push({ x, y, w: 50, h: 16, ci: r.i(5) });
+    }
+    if (!cp) {
+      maybeMakeMover(row, y);
+      maybeAddGhost(row, y);
+      maybeMakeIcy(row, y);
+    }
+    state.hookRow = (state.hookRow || 0) + 1;
+    for (const o of row) o.row = state.hookRow; // for checking the layout
     state.holds.push(...row);
     state.lastRow = row;
   }
@@ -1011,7 +1065,8 @@
   }
 
   function pickPower(allowed) {
-    const pool = Object.keys(POWERS).filter(k => allowed(k) && !(hook() && k === 'autoGrab')); // hooks already catch by themselves
+    // Hook mode: no Auto-grab (hooks already catch by themselves) and no Swollen (bigger ledges leave smaller gaps to throw through).
+    const pool = Object.keys(POWERS).filter(k => allowed(k) && !(hook() && (k === 'autoGrab' || k === 'swollen')));
     let r = R.balloons.r(0, pool.reduce((sum, k) => sum + POWERS[k].weight, 0));
     return pool.find(k => (r -= POWERS[k].weight) < 0) || pool[0];
   }
@@ -1276,7 +1331,7 @@
     if (t && t.key) releaseThumb(i);
   });
 
-  // ---------- Hook mode (PROTOTYPE, unlisted: ?mode=hook) ----------
+  // ---------- Hook mode: "Grappler" to players (PROTOTYPE, unlisted: ?mode=grappler, or ?mode=hook) ----------
   // Hands are hooks: no grabbing. A thrown hook bounces off a ledge it hits
   // from below or the side, and catches by itself when it comes down onto the
   // top of one. When a hook catches higher than the other hand's ledge, the
@@ -1304,6 +1359,8 @@
         return o;
       }
       if (h.state !== 'flying') continue; // a hand at the shoulder passes up through ledges
+      // A thrown hook passes through the ledge you're hanging from (and the one it was just on).
+      if (o === h.fromHold || state.hands.some(k => k !== h && k.state === 'held' && k.hold === o)) continue;
       if (py + r <= bottom + 1 && h.vy > 0) { // from below: bounce off the underside
         h.y = bottom - r;
         h.vy = -Math.abs(h.vy) * 0.35;
@@ -1499,8 +1556,10 @@
 
   function throwHand(i, v) {
     const h = state.hands[i];
+    const from = h.state === 'held' ? h.hold : null;
     if (hook() && h.state === 'held') letGo(i); // unhook and throw in one move
     if (h.state !== 'idle' && h.state !== 'returning') return;
+    h.fromHold = hook() ? from : null;
     const s = shoulder(i);
     Object.assign(h, { state: 'flying', x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y });
     sfx.throw();
@@ -2109,6 +2168,7 @@
       ctx.globalAlpha = 0.8;
       let caught = null;
       h.state = 'flying';
+      h.fromHold = state.hands[i].state === 'held' ? state.hands[i].hold : null;
       for (let n = 0; n < 600 && !handFlightOver(h); n++) {
         const py = h.y;
         advanceHand(h, s, DT);
@@ -2828,7 +2888,7 @@
         if (!doneTimer) doneTimer = setInterval(tick, 1000);
       }
     } else {
-      $('start-day').textContent = learn() ? '🎓 Training' : hook() ? '🪝 Hook (prototype)' : sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
+      $('start-day').textContent = learn() ? '🎓 Training' : hook() ? '🪝 Grappler (prototype)' : sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
       $('start-line').textContent = learn() ? "Learn the moves one at a time,\nthen climb to the finish." : c ? `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`
         : modeBest() > 0 ? `Your best: ${modeBest()} m` : '';
     }
@@ -2902,7 +2962,7 @@
   // Read-only handle for debugging in the browser console.
   // Hook mode: where would a throw with velocity v from hand i catch? (for testing)
   function predictHook(i, v) {
-    const s = shoulder(i), h = { state: 'flying', x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y };
+    const s = shoulder(i), h = { state: 'flying', x: s.x, y: s.y, vx: v.vx, vy: v.vy, t: 0, launchY: s.y, fromHold: state.hands[i].state === 'held' ? state.hands[i].hold : null };
     for (let n = 0; n < 600 && !handFlightOver(h); n++) {
       const py = h.y;
       advanceHand(h, s, DT);
