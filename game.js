@@ -128,7 +128,7 @@
   // best) are in the ☰ Modes tab, or opened by a ?mode=endless / ?mode=sprint link.
   const SPRINT_SECS = 60;
   // Training (?mode=learn, or climbguy.xyz/learn) is a guided first climb; see "Training" below.
-  const URL_MODE = { grappler: 'hook' }[new URLSearchParams(location.search).get('mode')] || new URLSearchParams(location.search).get('mode'); // Grappler is 'hook' inside
+  const URL_MODE = { grappler: 'hook', quick: 'one' }[new URLSearchParams(location.search).get('mode')] || new URLSearchParams(location.search).get('mode'); // Grappler is 'hook' inside, Quick Climb is 'one'
   // Brand-new players (no runs yet, haven't finished or skipped training) start
   // in training, unless a link asks for Endless or Sprint.
   let mode = ['sprint', 'endless', 'learn', 'hook', 'one'].includes(URL_MODE) ? URL_MODE : Tutorial.shouldShow ? 'learn' : 'daily';
@@ -138,7 +138,7 @@
   const one = () => mode === 'one'; // TEST (unlisted, ?mode=one): see "One-touch test" below
   const hook = () => mode === 'hook'; // Grappler (PROTOTYPE, unlisted, ?mode=grappler): see "Hook mode" below
   const modeBest = () => (learn() ? 0 : hook() ? store.get('cg.hookBest', 0) : one() ? store.get('cg.oneBest', 0) : sprint() ? Progress.sprintBest : daily() ? Progress.best : Progress.endlessBest);
-  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ', learn: '', hook: 'Grappler ', one: 'Test ' };
+  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ', learn: '', hook: 'Grappler ', one: 'Quick Climb ' };
   // The main badges, stats and landmarks come only from the daily.
   const mainAward = (id) => (daily() ? Progress.award(id) : null);
   let day = Daily.today();         // the daily being played; refreshed at each new game
@@ -2938,7 +2938,7 @@
         if (!doneTimer) doneTimer = setInterval(tick, 1000);
       }
     } else {
-      $('start-day').textContent = learn() ? '🎓 Training' : hook() ? '🪝 Grappler (prototype)' : one() ? '🧪 Test version' : sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
+      $('start-day').textContent = learn() ? '🎓 Training' : hook() ? '🪝 Grappler' : one() ? '⚡ Quick Climb' : sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
       $('start-line').textContent = learn() ? "Learn the moves one at a time,\nthen climb to the finish." : c ? `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`
         : modeBest() > 0 ? `Your best: ${modeBest()} m` : '';
     }
@@ -2961,7 +2961,16 @@
     if (daily() && Daily.today().key !== day.key) newGame();
     // Training opens with a short clip of the move.
     if (learn() && !state.training.climbing) Tutorial.playIntro(dismissStart);
-    else dismissStart();
+    else if (!expIntro()) dismissStart();
+  }
+  // Experiments (Quick Climb, Grappler): a short clip of what's different, the first time only.
+  function expIntro() {
+    if (!hook() && !one()) return false;
+    const k = 'cg.exp.' + mode;
+    if (store.get(k, false)) return false;
+    store.set(k, true);
+    Tutorial.playIntro(dismissStart, mode);
+    return true;
   }
   function dismissStart() {
     started = true;
@@ -2980,8 +2989,9 @@
     else leaveTrainingUrl();
     skin = Progress.equipped();
     newGame();
+    if (m === 'hook' || m === 'one') Analytics.event('exp-open-' + m);
     if (m === 'learn') Tutorial.playIntro(dismissStart);
-    else dismissStart();
+    else if (!expIntro()) dismissStart();
   }
   $('start-skip').addEventListener('click', () => { Analytics.event('learn-skipped'); finishTraining(); });
   for (const b of startEl.querySelectorAll('[data-mode]')) b.addEventListener('click', () => playMode(b.dataset.mode));

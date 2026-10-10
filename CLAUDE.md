@@ -30,4 +30,4 @@ Lead with what makes the game fun and different: each thumb is a hand, stretchy 
 
 ## Testing
 
-No build step. The headless Playwright scripts that have been used for testing live outside the repo. Before pushing, check that the page loads with no console errors in Daily, `?mode=endless`, `?mode=sprint` and `?mode=learn`. A fresh browser with no saved data starts in training; set `localStorage['cg.tutorial'] = 'seen'` to test the daily as a returning player.
+No build step. The headless Playwright scripts that have been used for testing live outside the repo. Before pushing, check that the page loads with no console errors in Daily, `?mode=endless`, `?mode=sprint` and `?mode=learn`. A fresh browser with no saved data starts in training; set `localStorage['cg.tutorial'] = 'seen'` to test the daily as a returning player, and `cg.exp.one` / `cg.exp.hook` = `true` to skip the experiments' first-time clips.

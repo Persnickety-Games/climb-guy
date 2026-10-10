@@ -231,6 +231,12 @@ window.Menu = (() => {
     { id: 'learn', icon: '🎓', name: 'Tutorial', desc: 'Learn the basics.' },
   ];
 
+  const EXPERIMENTS = [
+    { id: 'one', icon: '⚡', name: 'Quick Climb', desc: 'Tap to grab. No holding.', key: 'cg.oneBest' },
+    { id: 'hook', icon: '🪝', name: 'Grappler', desc: 'Hooks catch when they land on a ledge.', key: 'cg.hookBest' },
+  ];
+  const bestOf = (k) => { try { return Number(JSON.parse(localStorage.getItem(k))) || 0; } catch { return 0; } };
+
   function renderModes() {
     body.append(el('p', 'muted', 'The daily is the main event: your stats, passport and most unlocks come from it. Endless and Sprint are any time, with badges of their own.'));
     const list = el('div', 'modes');
@@ -255,6 +261,24 @@ window.Menu = (() => {
       list.append(card);
     }
     body.append(list);
+    // Experiments: ideas being tried out. No badges, no stats.
+    const exp = el('section', 'chart-section');
+    exp.append(el('h3', null, '🧪 Experiments'));
+    const xlist = el('div', 'modes');
+    for (const m of EXPERIMENTS) {
+      const playing = api.mode() === m.id;
+      const card = el('div', `mode${playing ? ' current' : ''}`);
+      const text = el('div', 'mode-text');
+      text.append(el('div', 'mode-name', `${m.icon} ${m.name}`), el('div', 'mode-desc', m.desc));
+      const best = bestOf(m.key);
+      if (best > 0) text.append(el('div', 'mode-best', `Best ${fmtNum(best)} m`));
+      const btn = el('button', 'mode-play', playing ? 'Restart' : 'Play');
+      btn.addEventListener('click', () => { root.hidden = true; if (api.onMode) api.onMode(m.id); });
+      card.append(text, btn);
+      xlist.append(card);
+    }
+    exp.append(xlist);
+    body.append(exp);
   }
 
   // A small "curated by PixelPicked" badge, tucked at the very bottom of every tab.

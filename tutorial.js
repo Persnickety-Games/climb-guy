@@ -252,7 +252,7 @@ window.Tutorial = (() => {
   const introArt = intro.querySelector('.intro-art');
   const introGo = intro.querySelector('.intro-go');
   const IW = 300, IH = 380, LOOP = 5.0;
-  let introRaf = 0, introT0 = 0, introDone = null;
+  let introRaf = 0, introT0 = 0, introDone = null, introKind = 'climb';
 
   function key(x, y, label, pressed, color) {
     ctx.fillStyle = pressed ? color : 'rgba(255,255,255,0.9)';
@@ -359,6 +359,75 @@ window.Tutorial = (() => {
     if (fade > 0) { ctx.fillStyle = `rgba(16,36,58,${fade})`; ctx.fillRect(0, 0, W, H); }
   }
 
+  // ---------- Experiment clips ----------
+  // Same scene, shown the first time someone opens an experiment: just what's
+  // different. Quick Climb: one finger anywhere, a tap grabs, the low hand lets
+  // go by itself. Grappler: let go and the hook catches when it lands on a ledge.
+  const HOOK = { VX: 55, VY: 600, G: 1091 };
+  const hookAt = (s) => [SHOULDER0[0] + HOOK.VX * s, SHOULDER0[1] - HOOK.VY * s + 0.5 * HOOK.G * s * s];
+  const HOOK_S = (HOOK.VY + Math.sqrt(HOOK.VY ** 2 - 2 * HOOK.G * (SHOULDER0[1] - (L2[1] - 8)))) / HOOK.G; // lands on top
+  const EXP_LOOP = 4.0;
+
+  function drawExp(time, kind) {
+    const t = time % EXP_LOOP;
+    const at = (a, b) => ease((t - a) / (b - a));
+    const hooking = kind === 'hook';
+    const path = hooking ? hookAt : flightAt;
+    const catchS = hooking ? HOOK_S : CATCH_S;
+    const CATCH2 = THROW + catchS, LIFT2 = CATCH2 + 0.15;
+    bg();
+    const L1 = [95, 200];
+    ledge(L1[0], L1[1], 100); ledge(L2[0], L2[1], L2W);
+    const aim = t >= 0.5 && t < THROW, drag = at(0.5, THROW - 0.2);
+    const flying = t >= THROW && t < CATCH2, caught = t >= CATCH2;
+    const lifted = t >= LIFT2, swing = at(LIFT2, LIFT2 + 0.7);
+    const grip = path(catchS);
+    const bx = lerp(112, grip[0] - 9, swing), by = lerp(250, grip[1] + 48, swing) + (swing ? 0 : Math.sin(t * 2) * 1.5);
+    const rs = [bx + 13, by - 5];
+    let r = null;
+    if (aim) r = [rs[0] + 4 * drag, rs[1] + 14 * drag];
+    else if (flying) r = path(t - THROW);
+    else if (caught) r = grip;
+    if (aim && drag > 0.1) {
+      ctx.fillStyle = 'rgba(255,209,102,0.95)';
+      const upto = hooking ? catchS * (0.2 + 0.8 * drag) : 1.3 * (0.2 + 0.8 * drag);
+      for (let s2 = 0.06; s2 <= upto; s2 += 0.06) {
+        const p = path(s2);
+        ctx.beginPath(); ctx.arc(p[0], p[1], 2.4, 0, Math.PI * 2); ctx.fill();
+      }
+      if (hooking && drag > 0.9) { // where it will catch
+        ctx.strokeStyle = 'rgba(255,209,102,0.95)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(grip[0], grip[1], 12, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    const swinging = swing > 0.05 && swing < 0.95;
+    climber(bx, by, lifted ? null : [L1[0] + 5, L1[1]], r, !lifted, caught, swinging ? 'wow' : 'smile');
+    if (swinging) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
+      for (const dx of [-10, 0, 10]) { ctx.beginPath(); ctx.moveTo(bx + dx, by + 24); ctx.lineTo(bx + dx, by + 44); ctx.stroke(); }
+    }
+    if (!hooking && flying && onLedge(r)) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 14);
+      ctx.fillStyle = `rgba(125, 255, 176, ${0.25 + 0.2 * pulse})`;
+      ctx.beginPath(); ctx.arc(r[0], r[1], 16 + pulse * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(r[0], r[1], 13, 0, Math.PI * 2); ctx.stroke();
+      hand(r[0], r[1], YELLOW, false);
+    }
+    if (caught) tapRing(grip[0], grip[1], (t - CATCH2) / 0.3);
+    // One finger (or the mouse), anywhere: no sides.
+    ctx.fillStyle = 'rgba(10,25,40,0.25)'; ctx.fillRect(0, 290, W, H - 290);
+    const ly = 335, fx = W / 2;
+    const tap = !hooking && t >= CATCH2 && t < CATCH2 + 0.22; // Quick Climb: a tap, not a hold
+    const fy = aim ? ly - 30 + drag * 40 : ly;
+    if (aim) { ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(fx, ly - 30); ctx.lineTo(fx, fy); ctx.stroke(); ctx.setLineDash([]); }
+    if (mouse()) cursor(fx, aim ? fy - 20 : ly - 20, aim || tap);
+    else finger(fx, fy, aim || tap, YELLOW);
+    if (!hooking && caught) tapRing(fx, ly, (t - CATCH2) / 0.3);
+    const fade = Math.max(0, (t - (EXP_LOOP - 0.35)) / 0.35);
+    if (fade > 0) { ctx.fillStyle = `rgba(16,36,58,${fade})`; ctx.fillRect(0, 0, W, H); }
+  }
+
   function introLoop(now) {
     if (intro.hidden) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -368,14 +437,18 @@ window.Tutorial = (() => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.textAlign = 'left';
     const time = (now - introT0) / 1000;
-    drawIntro(time);
+    const loop = introKind === 'climb' ? LOOP : EXP_LOOP;
+    if (introKind === 'climb') drawIntro(time); else drawExp(time, introKind);
     [ctx, W, H] = saved;
-    if (time >= LOOP - 0.4 && introGo.hidden) introGo.hidden = false; // played through once
+    if (time >= loop - 0.4 && introGo.hidden) introGo.hidden = false; // played through once
     introRaf = requestAnimationFrame(introLoop);
   }
 
-  function playIntro(onDone) {
+  // kind: 'climb' (before training), or an experiment: 'one' (Quick Climb), 'hook' (Grappler).
+  function playIntro(onDone, kind = 'climb') {
     introDone = onDone;
+    introKind = kind;
+    introGo.textContent = kind === 'climb' ? "Let's go ›" : 'Play ›';
     intro.hidden = false;
     introGo.hidden = true;
     introT0 = performance.now();
