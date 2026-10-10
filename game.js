@@ -131,13 +131,14 @@
   const URL_MODE = { grappler: 'hook' }[new URLSearchParams(location.search).get('mode')] || new URLSearchParams(location.search).get('mode'); // Grappler is 'hook' inside
   // Brand-new players (no runs yet, haven't finished or skipped training) start
   // in training, unless a link asks for Endless or Sprint.
-  let mode = ['sprint', 'endless', 'learn', 'hook'].includes(URL_MODE) ? URL_MODE : Tutorial.shouldShow ? 'learn' : 'daily';
+  let mode = ['sprint', 'endless', 'learn', 'hook', 'one'].includes(URL_MODE) ? URL_MODE : Tutorial.shouldShow ? 'learn' : 'daily';
   const sprint = () => mode === 'sprint';
   const daily = () => mode === 'daily';
   const learn = () => mode === 'learn';
+  const one = () => mode === 'one'; // TEST (unlisted, ?mode=one): see "One-touch test" below
   const hook = () => mode === 'hook'; // Grappler (PROTOTYPE, unlisted, ?mode=grappler): see "Hook mode" below
-  const modeBest = () => (learn() ? 0 : hook() ? store.get('cg.hookBest', 0) : sprint() ? Progress.sprintBest : daily() ? Progress.best : Progress.endlessBest);
-  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ', learn: '', hook: 'Grappler ' };
+  const modeBest = () => (learn() ? 0 : hook() ? store.get('cg.hookBest', 0) : one() ? store.get('cg.oneBest', 0) : sprint() ? Progress.sprintBest : daily() ? Progress.best : Progress.endlessBest);
+  const MODE_LABEL = { daily: '', endless: 'Endless ', sprint: 'Sprint ', learn: '', hook: 'Grappler ', one: 'Test ' };
   // The main badges, stats and landmarks come only from the daily.
   const mainAward = (id) => (daily() ? Progress.award(id) : null);
   let day = Daily.today();         // the daily being played; refreshed at each new game
@@ -221,7 +222,7 @@
     };
     if (daily() || learn()) initFeatures(); // fixed from the ground up, so it's the same for everyone
     if (learn()) startTraining(startHold);
-    state.beginner = !hook() && (learn() || runsSoFar() < BEGINNER_RUNS);
+    state.beginner = !hook() && !one() && (learn() || runsSoFar() < BEGINNER_RUNS);
     if (hook()) state.hookFrom = state.body.y - viewH / 3; // hooks catch only after falling a third of the screen
     state.hints = {};
     placeIdle(LEFT);
@@ -1211,6 +1212,7 @@
       return;
     }
     if (state.rocket) return;
+    if (one()) { setMouse(e.pointerType === 'mouse'); onePress(e); return; }
     if (e.pointerType === 'mouse') { mouseDown(e); return; }
     setMouse(false);
     // A first finger down means no other finger is touching, so any thumb we
@@ -1312,7 +1314,7 @@
     if (e.repeat) return;
     setMouse(true);
     if (!started || !tunePanel.hidden || Menu.isOpen() || Feedback.isOpen() || Tutorial.isOpen()) return;
-    if (state.phase === 'over' || state.rocket || hook()) return;
+    if (state.phase === 'over' || state.rocket || hook() || one()) return;
     const old = state.thumbs[i];
     if (old && old.mouse && old.mode === 'aim') return; // that hand is being thrown
     if (old) releaseThumb(i);
@@ -1332,6 +1334,31 @@
     const t = state.thumbs[i];
     if (t && t.key) releaseThumb(i);
   });
+
+  // ---------- One-touch test (unlisted: ?mode=one) ----------
+  // Anywhere on the screen, no sides. Drag and let go to throw the free hand.
+  // Tap while a hand (thrown, or on the way in) is over a ledge: it grabs and
+  // holds on by itself, and the other hand lets go, pulling the climber up to
+  // it. Nothing has to be held down. The mouse works the same way.
+  function onePress(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.isPrimary) releaseAllThumbs();
+    const { hands, thumbs } = state;
+    const holding = hands.some(h => h.state === 'held');
+    // A tap first tries to grab: a hand in the air (or, on the way in, at the shoulder) over a ledge.
+    const k = hands.findIndex((h, i) => !hurt(i) && (h.state === 'flying' || (!holding && h.state !== 'held')) && holdUnder(h));
+    if (k >= 0) {
+      grab(k, holdUnder(hands[k]), true); // holds by itself; the other hand lets go
+      return;
+    }
+    if (hands.some(h => h.state === 'flying')) { hint('early'); return; } // too early, nothing to grab yet
+    if (thumbs.some(t => t)) return;
+    const free = [LEFT, RIGHT].filter(i => hands[i].state === 'idle' || hands[i].state === 'returning');
+    if (!free.length) return;
+    const i = free.length === 2 ? (state.lastThrown === LEFT ? RIGHT : LEFT) : free[0];
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+    thumbs[i] = { id: e.pointerId, mouse: e.pointerType === 'mouse', mode: 'aim', canAim: false, downAt: performance.now(), sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY };
+  }
 
   // ---------- Hook mode: "Grappler" to players (PROTOTYPE, unlisted: ?mode=grappler, or ?mode=hook) ----------
   // Hands are hooks: no grabbing. A thrown hook bounces off a ledge it hits
@@ -1448,7 +1475,7 @@
 
   // With a mouse: which key grabs with which hand, right on the hands (screen space).
   function drawKeyLabels() {
-    if (!Controls.mouse || state.phase === 'over' || !(state.beginner || state.phase === 'ready')) return;
+    if (!Controls.mouse || one() || state.phase === 'over' || !(state.beginner || state.phase === 'ready')) return;
     state.hands.forEach((h, i) => {
       const side = i === LEFT ? -1 : 1;
       const sx = ox + h.x * scale + side * 20, sy = cssH - (h.y - state.cam) * scale - 18;
@@ -1755,9 +1782,9 @@
     state.unit = pickUnit(heightMeters());
     const m = heightMeters();
     state.timeUp = sprint() && climbing && state.water < state.body.y;
-    if (hook()) { // prototype: its own best, nothing else counts
-      const best = store.get('cg.hookBest', 0);
-      if (m > best) store.set('cg.hookBest', m);
+    if (hook() || one()) { // prototypes: their own best, nothing else counts
+      const key = hook() ? 'cg.hookBest' : 'cg.oneBest', best = store.get(key, 0);
+      if (m > best) store.set(key, m);
       state.result = { isBest: m > best, newBadges: [], newUnlocks: [] };
     } else if ((TUNING && !daily()) || learn()) {
       state.result = { isBest: false, newBadges: [], newUnlocks: [] }; // tuned runs and training don't count
@@ -2032,7 +2059,7 @@
     }
 
     // Faint divider between the two thumb zones (touch only).
-    if (!Controls.mouse && !hook()) { // (Grappler is one thumb: no sides)
+    if (!Controls.mouse && !hook() && !one()) { // (Grappler and the one-touch test have no sides)
       ctx.strokeStyle = 'rgba(255,255,255,0.1)';
       ctx.lineWidth = 3;
       ctx.setLineDash([8, 10]);
@@ -2544,6 +2571,14 @@
     const cx = ox + (WORLD_W * scale) / 2;
     if (learn() && state.phase === 'over') {
       drawTrainingOver(cx);
+    } else if (state.phase === 'ready' && one()) {
+      const by = cssH * 0.86, w = Math.min(cssW * 0.6, 260);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      roundRect(cx - w / 2, by, w, 50, 12);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 15px system-ui, sans-serif';
+      ctx.fillText(`${tapWord().toUpperCase()} to grab`, cx, by + 31);
     } else if (state.phase === 'ready' && !learn()) {
       const by = cssH * 0.86;
       // Touch: each half of the screen. Mouse: each half of the game column.
@@ -2575,7 +2610,7 @@
       ctx.font = 'bold 32px system-ui, sans-serif';
       ctx.fillText('Missed the catch!', cx, y0);
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      fitText(Controls.mouse ? 'Press A or D as a hand passes a ledge on the way in.' : 'Tap as a hand passes a ledge on the way in.', cx, y0 + 40, maxW, 16);
+      fitText(Controls.mouse && !one() ? 'Press A or D as a hand passes a ledge on the way in.' : `${tapWord()} as a hand passes a ledge on the way in.`, cx, y0 + 40, maxW, 16);
       ctx.fillStyle = '#7dffb0';
       fitText(daily() ? "No worries, this one doesn't count toward today's daily." : "No worries, this one doesn't count.", cx, y0 + 68, maxW, 15);
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
@@ -2632,7 +2667,7 @@
         fitText(text, cx, ly, maxW, 14);
         ly += 20;
       }
-      if (daily() || hook()) {
+      if (daily() || hook() || one()) {
         ctx.fillStyle = 'rgba(255,255,255,0.8)';
         ctx.font = '15px system-ui, sans-serif';
         ctx.fillText(daily() ? `${tapWord()} to continue` : `${tapWord()} anywhere to climb again`, cx, ly + 14);
@@ -2792,7 +2827,7 @@
       document.getElementById('learn-skip').textContent = state.trainingDone ? "Play today's daily ›" : 'Skip to the daily ›';
       document.getElementById('learn-skip').className = state.trainingDone ? '' : 'learn-secondary';
     }
-    const show = started && state.phase === 'over' && !state.missed && !learn() && !hook() && tunePanel.hidden && !Menu.isOpen();
+    const show = started && state.phase === 'over' && !state.missed && !learn() && !hook() && !one() && tunePanel.hidden && !Menu.isOpen();
     if (overActions.hidden === show) { // only touch the DOM when it changes
       overActions.hidden = !show;
       if (!show) shareStatus.textContent = '';
@@ -2892,7 +2927,7 @@
       if (streak >= 2) lines.push(`🔥 ${streak}-day streak${result ? '' : ': keep it going!'}`);
       $('start-line').textContent = lines.join('\n');
       if (result) {
-        $('done-score').textContent = `✓ ${result.m} m`;
+        $('done-score').textContent = `${result.m} m`;
         $('done-vs').textContent = c ? youVs(c, result.m) : '';
         $('done-status').textContent = '';
         const tick = () => {
@@ -2903,7 +2938,7 @@
         if (!doneTimer) doneTimer = setInterval(tick, 1000);
       }
     } else {
-      $('start-day').textContent = learn() ? '🎓 Training' : hook() ? '🪝 Grappler (prototype)' : sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
+      $('start-day').textContent = learn() ? '🎓 Training' : hook() ? '🪝 Grappler (prototype)' : one() ? '🧪 Test version' : sprint() ? '⏱️ Sprint: 60 seconds' : '🌊 Endless';
       $('start-line').textContent = learn() ? "Learn the moves one at a time,\nthen climb to the finish." : c ? `Beat ${challengerPossessive().replace("Your friend's", "your friend's")} ${c.m} m!`
         : modeBest() > 0 ? `Your best: ${modeBest()} m` : '';
     }
