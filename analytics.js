@@ -10,7 +10,7 @@
 window.Analytics = (() => {
   'use strict';
 
-  const CODE = 'persnickety-games'; // the GoatCounter site code: persnickety-games.goatcounter.com
+  const CODE = 'climb-guy'; // the GoatCounter site code: climb-guy.goatcounter.com
   const queue = [];
 
   // Open climbguy.xyz/#toggle-goatcounter to stop (or restart) counting this
