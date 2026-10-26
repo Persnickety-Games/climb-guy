@@ -337,6 +337,7 @@ canvas { display: block; }
   font: 600 14px system-ui, sans-serif; padding: 6px 10px;
 }
 .feedback-btn[hidden] { display: none; }
+.studio-link { flex-basis: 100%; color: #8a9bb0; font: 500 12px system-ui, sans-serif; text-decoration: none; padding: 2px 0 4px; }
 .done-feedback { margin-top: 6px; }
 #feedback {
   position: fixed; inset: 0; z-index: 20;
